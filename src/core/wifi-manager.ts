@@ -1,12 +1,14 @@
 import { exec } from "child_process";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const HOTSPOT_SSID = "Smart-Home-System";
 const HOTSPOT_CON_NAME = "shs-hotspot";
-const HOTSPOT_IP = "10.42.0.1";
-const DNSMASQ_CONF_DIR = "/etc/NetworkManager/dnsmasq-shared.d";
-const DNSMASQ_CONF_PATH = `${DNSMASQ_CONF_DIR}/shs-captive.conf`;
-const DNSMASQ_CONF_CONTENT = `address=/#/${HOTSPOT_IP}\n`;
+const DNSMASQ_CONF_PATH = "/etc/NetworkManager/dnsmasq-shared.d/shs-captive.conf";
+const CAPTIVE_CONF_SCRIPT = path.resolve(__dirname, "../../scripts/install-captive-conf.sh");
 
 let hotspotActive = false;
 
@@ -242,9 +244,7 @@ export function isHotspotMode(): boolean {
 async function ensureCaptivePortalDns(): Promise<void> {
   try {
     if (!fs.existsSync(DNSMASQ_CONF_PATH)) {
-      await run(`sudo mkdir -p ${DNSMASQ_CONF_DIR}`);
-      await run(`sudo sh -c 'echo "${DNSMASQ_CONF_CONTENT.trim()}" > ${DNSMASQ_CONF_PATH}'`);
-      console.log("[wifi] Installed captive portal DNS config");
+      await run(`sudo "${CAPTIVE_CONF_SCRIPT}"`);
     }
   } catch (err: any) {
     console.warn("[wifi] Could not install captive portal DNS config:", err.message);

@@ -10,6 +10,7 @@ User=smarthub
 Group=smarthub
 WorkingDirectory=/opt/smart-home-system
 ExecStartPre=/bin/sh -c 'iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000'
+ExecStartPre=/opt/smart-home-system/scripts/install-captive-conf.sh
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5
