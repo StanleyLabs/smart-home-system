@@ -3,6 +3,14 @@ import { Hono } from "hono";
 import type { Engine } from "../../core/engine.js";
 import type { SystemSettings } from "../../types.js";
 import { requireRole } from "../auth.js";
+import {
+  scanNetworks,
+  connectToWifi,
+  startHotspot,
+  stopHotspot,
+  getStatus as getWifiStatus,
+  getHotspotSsid,
+} from "../../core/wifi-manager.js";
 
 export function systemRoutes(engine: Engine, settings: SystemSettings) {
   const app = new Hono();
@@ -76,6 +84,40 @@ export function systemRoutes(engine: Engine, settings: SystemSettings) {
     } catch {
       return c.json({ ssid: null });
     }
+  });
+
+  app.get("/wifi/status", async (c) => {
+    const status = await getWifiStatus();
+    return c.json({ ...status, hotspot_ssid: getHotspotSsid() });
+  });
+
+  app.get("/wifi/scan", async (c) => {
+    const networks = await scanNetworks();
+    return c.json(networks);
+  });
+
+  app.post("/wifi/connect", async (c) => {
+    const { ssid, password } = await c.req.json();
+    if (!ssid) return c.json({ error: "ssid is required" }, 400);
+
+    const result = await connectToWifi(ssid, password);
+    if (result.success) {
+      settings.network.wifi = { ssid, configured: true };
+    }
+    return c.json(result, result.success ? 200 : 500);
+  });
+
+  app.post("/wifi/hotspot", async (c) => {
+    const { action } = await c.req.json();
+    if (action === "start") {
+      const result = await startHotspot();
+      return c.json(result, result.success ? 200 : 500);
+    }
+    if (action === "stop") {
+      const result = await stopHotspot();
+      return c.json(result, result.success ? 200 : 500);
+    }
+    return c.json({ error: 'action must be "start" or "stop"' }, 400);
   });
 
   app.post("/setup-device", requireRole("admin"), async (c) => {

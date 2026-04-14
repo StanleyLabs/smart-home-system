@@ -9,6 +9,7 @@ Type=simple
 User=smarthub
 Group=smarthub
 WorkingDirectory=/opt/smart-home-system
+ExecStartPre=/bin/sh -c 'iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null || iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000'
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=5
@@ -23,9 +24,8 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/smart-home-system/data /opt/smart-home-system/config
 
-# CAP_NET_BIND_SERVICE = bind port 80 without root
 # CAP_NET_RAW = BLE HCI sockets for Matter BLE commissioning
-AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_RAW
 
 # Environment
 Environment=NODE_ENV=production

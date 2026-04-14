@@ -142,6 +142,7 @@ export function authMiddleware() {
       (path.startsWith("/api/setup") && !path.startsWith("/api/setup-queue")) ||
       path.startsWith("/api/auth") ||
       path === "/api/system/status" ||
+      path.startsWith("/api/system/wifi") ||
       !path.startsWith("/api/")
     ) {
       return next();

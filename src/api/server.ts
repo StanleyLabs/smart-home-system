@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
-import type { SystemSettings } from "../types.js";
+import { getBaseUrl, type SystemSettings } from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { roomRoutes } from "./routes/rooms.js";
@@ -110,6 +110,6 @@ export function startServer(
     throw err;
   });
 
-  console.log(`API server listening on port ${port}`);
+  console.log(`API server listening on ${getBaseUrl(settings.network)}`);
   return server;
 }

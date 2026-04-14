@@ -13,10 +13,9 @@
     "language": "en"
   },
   "network": {
-    "hostname": "home.local",
-    "api_port": 80,
+    "hostname": "homehub.local",
+    "api_port": 3000,
     "protocol": "http",
-    "base_url": "http://homehub.local",
     "mqtt": {
       "broker_host": "localhost",
       "broker_port": 1883,

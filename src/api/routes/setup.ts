@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { getDb } from "../../db/database.js";
 import type { Engine } from "../../core/engine.js";
 import type { SystemSettings } from "../../types.js";
+import { applyHostname } from "../../core/hostname.js";
 import {
   hashPassword,
   hashPin,
@@ -77,16 +78,25 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         break;
       }
       case 4: {
-        if (body.hostname) settings.network.hostname = body.hostname;
+        if (body.hostname) {
+          settings.network.hostname = body.hostname;
+          await applyHostname(body.hostname);
+        }
         break;
       }
       case 5: {
+        if (body.ssid) {
+          settings.network.wifi = { ssid: body.ssid, configured: true };
+        }
+        break;
+      }
+      case 6: {
         if (body.matter !== undefined) settings.protocols.matter = body.matter;
         if (body.zigbee !== undefined) settings.protocols.zigbee = body.zigbee;
         if (body.zwave !== undefined) settings.protocols.zwave = body.zwave;
         break;
       }
-      case 6: {
+      case 7: {
         if (body.rooms && Array.isArray(body.rooms)) {
           for (const room of body.rooms) {
             const room_id = `room_${uuid().slice(0, 8)}`;

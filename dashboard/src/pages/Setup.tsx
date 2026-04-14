@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
 import type { AuthUser } from '../stores/auth-store';
 import { Toggle } from '../components/Toggle';
 
-const STEPS = 7;
+const STEPS = 8;
+
+type WifiNetwork = { ssid: string; signal: number; security: string };
+type WifiStatus = {
+  connected: boolean;
+  ssid: string | null;
+  hotspot_active: boolean;
+  ip: string | null;
+  platform_supported: boolean;
+  hotspot_ssid: string;
+};
 const SUGGESTED_ROOMS = [
   'Living Room',
   'Kitchen',
@@ -38,9 +48,80 @@ export default function Setup() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomFloor, setRoomFloor] = useState('');
+  const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
+  const [wifiStatus, setWifiStatus] = useState<WifiStatus | null>(null);
+  const [selectedSsid, setSelectedSsid] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [wifiConnected, setWifiConnected] = useState(false);
+  const [wifiScanning, setWifiScanning] = useState(false);
+  const [wifiConnecting, setWifiConnecting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const scanWifi = useCallback(async () => {
+    setWifiScanning(true);
+    try {
+      const [status, networks] = await Promise.all([
+        api.get<WifiStatus>('/system/wifi/status'),
+        api.get<WifiNetwork[]>('/system/wifi/scan'),
+      ]);
+      setWifiStatus(status);
+      setWifiNetworks(networks);
+      if (status.connected && !status.hotspot_active) {
+        setWifiConnected(true);
+        if (status.ssid) setSelectedSsid(status.ssid);
+      }
+    } catch {
+      // non-Linux or network error — mark as not supported so step auto-skips
+      setWifiStatus({
+        connected: true,
+        ssid: null,
+        hotspot_active: false,
+        ip: null,
+        platform_supported: false,
+        hotspot_ssid: '',
+      });
+    } finally {
+      setWifiScanning(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    api.get<WifiStatus>('/system/wifi/status')
+      .then(setWifiStatus)
+      .catch(() => setWifiStatus({
+        connected: true, ssid: null, hotspot_active: false,
+        ip: null, platform_supported: false, hotspot_ssid: '',
+      }));
+  }, []);
+
+  useEffect(() => {
+    if (step === 5 && wifiStatus?.platform_supported) {
+      scanWifi();
+    }
+  }, [step, scanWifi, wifiStatus]);
+
+  async function connectWifi() {
+    if (!selectedSsid) return;
+    setWifiConnecting(true);
+    setError(null);
+    try {
+      const res = await api.post<{ success: boolean; message: string }>(
+        '/system/wifi/connect',
+        { ssid: selectedSsid, password: wifiPassword || undefined }
+      );
+      if (res.success) {
+        setWifiConnected(true);
+      } else {
+        setError(res.message || 'Failed to connect');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'WiFi connection failed');
+    } finally {
+      setWifiConnecting(false);
+    }
+  }
 
   function validateStep(n: number): boolean {
     const next: Record<string, string> = {};
@@ -84,14 +165,18 @@ export default function Setup() {
         await api.post(`/setup/step/4`, { hostname: hostname.trim() });
       } else if (n === 5) {
         await api.post(`/setup/step/5`, {
+          ssid: selectedSsid || null,
+        });
+      } else if (n === 6) {
+        await api.post(`/setup/step/6`, {
           matter_enabled: matterEnabled,
           zigbee_enabled: false,
           zwave_enabled: false,
         });
-      } else if (n === 6) {
-        await api.post(`/setup/step/6`, { rooms });
       } else if (n === 7) {
-        await api.post(`/setup/step/7`, {
+        await api.post(`/setup/step/7`, { rooms });
+      } else if (n === 8) {
+        await api.post(`/setup/step/8`, {
           language,
           username: username.trim(),
           display_name: displayName.trim(),
@@ -100,6 +185,7 @@ export default function Setup() {
           temperature_unit: tempUnit,
           hostname: hostname.trim(),
           matter_enabled: matterEnabled,
+          wifi_ssid: selectedSsid || null,
           rooms,
         });
       }
@@ -116,7 +202,15 @@ export default function Setup() {
     setLoading(true);
     try {
       await postStep(step);
-      if (step < STEPS) setStep((s) => s + 1);
+      if (step < STEPS) {
+        const nextStep = step + 1;
+        if (nextStep === 5 && wifiStatus && !wifiStatus.platform_supported) {
+          await postStep(5);
+          setStep(6);
+        } else {
+          setStep(nextStep);
+        }
+      }
     } catch {
       /* postStep sets error */
     }
@@ -130,7 +224,7 @@ export default function Setup() {
     setError(null);
     setLoading(true);
     try {
-      await postStep(7);
+      await postStep(8);
       const res = await api.post<CompleteResponse>('/setup/complete');
       setAuth(res.user, res.token);
       navigate({ to: '/', replace: true });
@@ -403,6 +497,128 @@ export default function Setup() {
             <div className="flex flex-col gap-6">
               <div>
                 <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
+                  WiFi
+                </h2>
+                <p className="mt-2 text-[var(--text-secondary)]">
+                  {wifiStatus?.hotspot_active
+                    ? 'You\'re connected via the hub\'s hotspot. Choose your home WiFi network below.'
+                    : 'Connect your hub to your home WiFi network.'}
+                </p>
+              </div>
+
+              {wifiConnected ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--success)]/30 bg-[var(--success)]/10 p-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-[var(--success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="text-lg font-medium text-[var(--text-primary)]">
+                    Connected to {selectedSsid || wifiStatus?.ssid || 'WiFi'}
+                  </p>
+                  {wifiStatus?.hotspot_active && (
+                    <p className="text-center text-sm text-[var(--text-secondary)]">
+                      After finishing setup, reconnect your device to your home WiFi.
+                      <br />
+                      Your hub will be available at <strong>http://{hostname || 'your-hostname.local'}</strong>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void scanWifi()}
+                      disabled={wifiScanning}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-2.5 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-hover)] disabled:opacity-50"
+                    >
+                      {wifiScanning ? 'Scanning...' : 'Scan for networks'}
+                    </button>
+                    {wifiNetworks.length > 0 && (
+                      <span className="text-sm text-[var(--text-muted)]">
+                        {wifiNetworks.length} network{wifiNetworks.length !== 1 ? 's' : ''} found
+                      </span>
+                    )}
+                  </div>
+
+                  {wifiNetworks.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] p-3">
+                      {wifiNetworks.map((n) => (
+                        <button
+                          key={n.ssid}
+                          type="button"
+                          onClick={() => { setSelectedSsid(n.ssid); setWifiPassword(''); }}
+                          className={`flex items-center justify-between rounded-xl px-4 py-3 text-left transition-colors ${
+                            selectedSsid === n.ssid
+                              ? 'bg-[var(--accent)]/15 border border-[var(--accent)]/40'
+                              : 'hover:bg-[var(--bg-card-active)] border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0" />
+                            </svg>
+                            <span className="font-medium text-[var(--text-primary)]">{n.ssid}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {n.security !== 'Open' && n.security !== '' && (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            )}
+                            <div className="flex gap-0.5">
+                              {[1, 2, 3, 4].map((bar) => (
+                                <div
+                                  key={bar}
+                                  className={`w-1 rounded-full ${
+                                    n.signal >= bar * 25
+                                      ? 'bg-[var(--accent)]'
+                                      : 'bg-[var(--border)]'
+                                  }`}
+                                  style={{ height: `${bar * 4 + 4}px` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedSsid && (
+                    <div className="flex flex-col gap-3">
+                      {wifiNetworks.find((n) => n.ssid === selectedSsid)?.security !== 'Open' && (
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-sm font-medium text-[var(--text-secondary)]">
+                            Password for {selectedSsid}
+                          </label>
+                          <input
+                            type="password"
+                            value={wifiPassword}
+                            onChange={(e) => setWifiPassword(e.target.value)}
+                            placeholder="WiFi password"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                          />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void connectWifi()}
+                        disabled={wifiConnecting}
+                        className="rounded-xl bg-[var(--accent)] px-6 py-3 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                      >
+                        {wifiConnecting ? 'Connecting...' : `Connect to ${selectedSsid}`}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {step === 6 && (
+            <div className="flex flex-col gap-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
                   Protocols
                 </h2>
                 <p className="mt-2 text-[var(--text-secondary)]">
@@ -433,7 +649,7 @@ export default function Setup() {
             </div>
           )}
 
-          {step === 6 && (
+          {step === 7 && (
             <div className="flex flex-col gap-6">
               <div>
                 <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
@@ -505,7 +721,7 @@ export default function Setup() {
             </div>
           )}
 
-          {step === 7 && (
+          {step === 8 && (
             <div className="flex flex-col gap-6">
               <div>
                 <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
@@ -555,6 +771,14 @@ export default function Setup() {
                     {hostname || '—'}
                   </dd>
                 </div>
+                {selectedSsid && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-[var(--text-muted)]">WiFi</dt>
+                    <dd className="text-right font-medium text-[var(--text-primary)]">
+                      {selectedSsid}
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between gap-4">
                   <dt className="text-[var(--text-muted)]">Matter</dt>
                   <dd className="text-right font-medium text-[var(--success)]">

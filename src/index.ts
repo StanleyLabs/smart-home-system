@@ -8,7 +8,8 @@ import { startServer } from "./api/server.js";
 import { MatterAdapter } from "./adapters/matter-adapter.js";
 import { closeDb } from "./db/database.js";
 import { seedMockDevices } from "./core/seed-devices.js";
-import type { SystemSettings } from "./types.js";
+import { getBaseUrl, type SystemSettings } from "./types.js";
+import { ensureNetworkOrHotspot } from "./core/onboarding.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "../config/system.json");
@@ -33,6 +34,8 @@ const matterAdapter = new MatterAdapter();
 engine.registerAdapter("matter", matterAdapter);
 
 async function main() {
+  const hotspotStarted = await ensureNetworkOrHotspot();
+
   await engine.start();
   seedMockDevices(engine);
 
@@ -75,7 +78,12 @@ async function main() {
   startServer(engine, settings);
 
   console.log("Smart Home Hub is running");
-  console.log(`  API: http://localhost:${settings.network.api_port}`);
+  if (hotspotStarted) {
+    console.log("  WiFi: Connect to \"Smart-Home-System\" to set up");
+    console.log("  API: http://192.168.4.1");
+  } else {
+    console.log(`  API: ${getBaseUrl(settings.network)}`);
+  }
   console.log(
     `  MQTT: ${settings.network.mqtt.broker_host}:${settings.network.mqtt.broker_port}` +
       (useEmbedded ? " (embedded broker)" : "")

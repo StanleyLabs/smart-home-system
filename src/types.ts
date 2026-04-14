@@ -266,7 +266,6 @@ export interface SystemSettings {
     hostname: string;
     api_port: number;
     protocol: string;
-    base_url: string;
     mqtt: {
       broker_host: string;
       broker_port: number;
@@ -277,6 +276,7 @@ export interface SystemSettings {
       embedded_broker?: boolean;
     };
     remote_access: { enabled: boolean };
+    wifi?: { ssid: string; configured: boolean };
   };
   protocols: Record<string, any>;
   automations: {
@@ -322,3 +322,11 @@ export const SYSTEM_GROUPS: Record<string, { name: string; device_types: DeviceT
   system_all_garage_doors: { name: "All Garage Doors", device_types: ["garage_door"] },
   system_all_doorbells: { name: "All Doorbells", device_types: ["doorbell"] },
 };
+
+export function getBaseUrl(network: SystemSettings["network"]): string {
+  const { protocol, hostname, api_port } = network;
+  const isDefaultPort =
+    (protocol === "http" && api_port === 80) ||
+    (protocol === "https" && api_port === 443);
+  return `${protocol}://${hostname}${isDefaultPort ? "" : `:${api_port}`}`;
+}

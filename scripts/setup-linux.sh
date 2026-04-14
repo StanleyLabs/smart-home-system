@@ -49,17 +49,25 @@ if [ "$ENABLE_BLE" = true ]; then
     libbluetooth-dev
 fi
 
-NODE_BIN="$(which node)"
-CAPS="cap_net_bind_service"
 if [ "$ENABLE_BLE" = true ]; then
-  CAPS="cap_net_bind_service,cap_net_raw"
+  NODE_BIN="$(which node)"
+  echo "==> Granting BLE capability (cap_net_raw) to $NODE_BIN..."
+  sudo setcap "cap_net_raw+eip" "$NODE_BIN"
+  echo "    Done. Verify with: getcap $NODE_BIN"
 fi
-echo "==> Granting capabilities ($CAPS) to $NODE_BIN..."
-sudo setcap "${CAPS}+eip" "$NODE_BIN"
-echo "    Done. Verify with: getcap $NODE_BIN"
 
 echo "==> Ensuring avahi-daemon is running..."
 sudo systemctl enable --now avahi-daemon
+
+echo "==> Setting up port redirect (80 -> 3000)..."
+sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null \
+  || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000
+
+if command -v iptables-save &>/dev/null; then
+  sudo apt-get install -y iptables-persistent 2>/dev/null || true
+  sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+  echo "    iptables rule persisted."
+fi
 
 echo "==> Installing npm dependencies..."
 npm run setup

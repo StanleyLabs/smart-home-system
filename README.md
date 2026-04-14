@@ -12,9 +12,9 @@ npm run setup
 npm run dev
 ```
 
-The hub starts on **http://localhost** (port 80). On first launch, you'll be guided through a setup wizard to create your admin account and configure the hub.
+The hub starts on **http://localhost:3000**. On first launch, you'll be guided through a setup wizard to create your admin account, connect to WiFi, and configure the hub.
 
-> **Linux note:** Port 80 requires either root or the `cap_net_bind_service` capability on the Node binary. Run `./scripts/setup-linux.sh` to set this up automatically.
+> **Production (Linux):** The setup script adds an iptables redirect from port 80 to 3000 so the hub is reachable at a clean URL like `http://home.local`.
 
 ## Architecture
 
@@ -46,7 +46,10 @@ smart-home-system/
 │   │   ├── automation-engine.ts
 │   │   ├── scene-manager.ts
 │   │   ├── undo-system.ts
-│   │   └── notification-system.ts
+│   │   ├── notification-system.ts
+│   │   ├── wifi-manager.ts   # WiFi scan/connect/hotspot via nmcli
+│   │   ├── onboarding.ts     # First-boot network check
+│   │   └── hostname.ts       # mDNS hostname on Linux
 │   ├── adapters/
 │   │   ├── types.ts          # ProtocolAdapter interface
 │   │   └── mock-adapter.ts
@@ -98,7 +101,8 @@ The hub runs natively on Linux ARM64 and x86_64. An automated setup script handl
 |---------|---------|
 | `build-essential`, `python3` | Compile native npm modules (`bcrypt`, `better-sqlite3`) |
 | `avahi-daemon`, `avahi-utils`, `libnss-mdns` | mDNS discovery for Matter devices |
-| `wireless-tools`, `network-manager` | Wi-Fi SSID detection (`iwgetid` / `nmcli`) |
+| `wireless-tools`, `network-manager` | WiFi onboarding hotspot, scanning, and connection (`nmcli`) |
+| `iptables-persistent` | Persist port 80 → 3000 redirect across reboots |
 | `bluetooth`, `bluez`, `libbluetooth-dev` | BLE commissioning (optional, use `--ble`) |
 | Node.js 20+ | Runtime (installed via NodeSource if missing) |
 
@@ -125,16 +129,11 @@ sudo systemctl status smart-home-system
 sudo journalctl -u smart-home-system -f
 ```
 
-### Port 80 Without Root
+### First-Boot WiFi Onboarding
 
-The default API port is `80` so you can browse to `http://homehub.local` without typing a port. On Linux, binding to port 80 normally requires root, but the setup script grants the `cap_net_bind_service` capability to the Node binary so it works without root:
+When the hub boots with no network connection (no ethernet, no saved WiFi), it automatically creates an open WiFi hotspot named **Smart-Home-System**. Connect to it from your phone or laptop, then open `http://192.168.4.1` to access the setup wizard. During setup, you'll pick your home WiFi network and enter the password. The hub joins your network and tears down the hotspot — the whole process takes about two minutes.
 
-```bash
-# Already done by setup-linux.sh, but can be run manually:
-sudo setcap cap_net_bind_service+eip $(which node)
-```
-
-The systemd service file also grants this capability via `AmbientCapabilities`.
+On macOS / Windows (development), the WiFi onboarding step is automatically skipped.
 
 ### Raspberry Pi / Jetson Nano Notes
 

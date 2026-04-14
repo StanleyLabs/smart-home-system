@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { Engine } from "../../core/engine.js";
 import type { SystemSettings } from "../../types.js";
+import { applyHostname } from "../../core/hostname.js";
 import { requireRole } from "../auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,8 +34,14 @@ export function settingsRoutes(engine: Engine, settings: SystemSettings) {
     if (!(section in settings)) return c.json({ error: "Unknown section" }, 404);
 
     const body = await c.req.json();
+    const oldHostname = settings.network.hostname;
     (settings as any)[section] = { ...(settings as any)[section], ...body };
     saveSettings(settings);
+
+    if (section === "network" && body.hostname && body.hostname !== oldHostname) {
+      await applyHostname(body.hostname);
+    }
+
     return c.json(settings[section]);
   });
 
