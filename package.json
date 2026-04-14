@@ -1,0 +1,39 @@
+{
+  "name": "smart-home-system",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && npm run build:dashboard",
+    "build:hub": "tsc",
+    "build:dashboard": "cd dashboard && npm run build",
+    "start": "node dist/index.js",
+    "setup": "npm install && cd dashboard && npm install"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@matter/main": "^0.16.11",
+    "@matter/nodejs": "^0.16.11",
+    "@matter/nodejs-ble": "^0.16.11",
+    "@project-chip/matter.js": "^0.16.11",
+    "aedes": "^1.0.2",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.0.0",
+    "hono": "^4.4.0",
+    "mqtt": "^5.10.0",
+    "node-cron": "^3.0.3",
+    "suncalc": "^1.9.0",
+    "uuid": "^10.0.0",
+    "websocket-stream": "^5.5.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/suncalc": "^1.9.2",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

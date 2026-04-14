@@ -1,0 +1,99 @@
+{
+  "hub": {
+    "name": "Stanley Labs",
+    "location": {
+      "latitude": 35.926,
+      "longitude": -86.8689,
+      "timezone": "Chicago"
+    },
+    "units": {
+      "temperature": "fahrenheit",
+      "distance": "imperial"
+    },
+    "language": "en"
+  },
+  "network": {
+    "hostname": "home.local",
+    "api_port": 80,
+    "protocol": "http",
+    "base_url": "http://homehub.local",
+    "mqtt": {
+      "broker_host": "localhost",
+      "broker_port": 1883,
+      "websocket_port": 9001,
+      "websocket_protocol": "ws",
+      "require_auth": true
+    },
+    "remote_access": {
+      "enabled": false
+    }
+  },
+  "protocols": {
+    "matter": {
+      "enabled": true,
+      "thread_channel": 25
+    },
+    "zigbee": {
+      "enabled": false,
+      "channel": 11,
+      "dongle_path": "/dev/ttyUSB0"
+    },
+    "zwave": {
+      "enabled": false,
+      "dongle_path": "/dev/ttyUSB1",
+      "region": "US"
+    }
+  },
+  "automations": {
+    "global_rate_limit_per_device": 10,
+    "rate_limit_window_seconds": 1
+  },
+  "notifications": {
+    "grouping": {
+      "enabled": true,
+      "window_seconds": 5,
+      "max_group_size": 20
+    }
+  },
+  "updates": {
+    "hub": {
+      "auto_check": true,
+      "check_interval_hours": 24,
+      "auto_download": false,
+      "auto_install": false,
+      "manifest_url": "https://hub.stanleylabs.com/updates/manifest.json"
+    },
+    "devices": {
+      "auto_check": true,
+      "check_interval_hours": 24,
+      "auto_download": false,
+      "auto_install": false,
+      "concurrent_updates": 1,
+      "device_timeout_minutes": 5
+    }
+  },
+  "security": {
+    "session_expiry_hours": 24,
+    "pin_lockout_attempts": 5,
+    "pin_lockout_minutes": 15,
+    "min_admin_password_length": 12,
+    "min_pin_length": 6
+  },
+  "storage": {
+    "event_log_retention_days": 30,
+    "undo_history_size": 50,
+    "state_write_interval_seconds": 5
+  },
+  "backup": {
+    "auto_backup": true,
+    "backup_time": "03:00",
+    "backup_interval_hours": 24,
+    "max_auto_backups": 7,
+    "destinations": [
+      {
+        "type": "local",
+        "path": "./backups"
+      }
+    ]
+  }
+}
