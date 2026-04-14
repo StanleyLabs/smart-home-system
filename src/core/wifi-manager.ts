@@ -35,6 +35,17 @@ function notLinux(action: string): void {
   console.log(`[wifi] ${action} skipped (${process.platform}): only supported on Linux`);
 }
 
+async function findWifiInterface(): Promise<string | null> {
+  try {
+    const output = await run("nmcli -t -f device,type device status");
+    for (const line of output.split("\n")) {
+      const [device, type] = line.split(":");
+      if (type === "wifi") return device;
+    }
+  } catch {}
+  return null;
+}
+
 export async function scanNetworks(): Promise<WifiNetwork[]> {
   if (process.platform !== "linux") {
     notLinux("scan");
@@ -74,9 +85,11 @@ export async function connectToWifi(ssid: string, password?: string): Promise<Wi
   }
 
   try {
+    const iface = await findWifiInterface();
+    const ifPart = iface ? ` ifname ${iface}` : "";
     const cmd = password
-      ? `nmcli device wifi connect "${ssid}" password "${password}"`
-      : `nmcli device wifi connect "${ssid}"`;
+      ? `nmcli device wifi connect "${ssid}" password "${password}"${ifPart}`
+      : `nmcli device wifi connect "${ssid}"${ifPart}`;
     await run(cmd);
 
     await stopHotspot().catch(() => {});
@@ -99,15 +112,28 @@ export async function startHotspot(): Promise<WifiResult> {
       return { success: true, message: "Hotspot already active" };
     }
 
-    await run(
-      `nmcli device wifi hotspot ifname wlan0 con-name ${HOTSPOT_CON_NAME} ssid "${HOTSPOT_SSID}" band bg`
-    );
-    await run(
-      `nmcli connection modify ${HOTSPOT_CON_NAME} 802-11-wireless-security.key-mgmt none`
-    );
+    const iface = await findWifiInterface();
+    if (!iface) {
+      return { success: false, message: "No WiFi interface found" };
+    }
+
+    await run(`nmcli connection delete ${HOTSPOT_CON_NAME}`).catch(() => {});
+
+    await run([
+      "nmcli connection add type wifi",
+      `con-name ${HOTSPOT_CON_NAME}`,
+      `ifname ${iface}`,
+      `ssid "${HOTSPOT_SSID}"`,
+      "autoconnect no",
+      "wifi.mode ap",
+      "wifi.band bg",
+      "ipv4.method shared",
+      "ipv6.method disabled",
+    ].join(" "));
+
     await run(`nmcli connection up ${HOTSPOT_CON_NAME}`);
 
-    console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started (open network)`);
+    console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started on ${iface} (open network)`);
     return { success: true, message: `Hotspot "${HOTSPOT_SSID}" started` };
   } catch (err: any) {
     console.error("[wifi] hotspot start failed:", err.message);
