@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
 import { getBaseUrl, type SystemSettings } from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
+import { isHotspotMode } from "../core/wifi-manager.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { roomRoutes } from "./routes/rooms.js";
 import { groupRoutes } from "./routes/groups.js";
@@ -28,6 +29,36 @@ export function createServer(engine: Engine, settings: SystemSettings) {
   const app = new Hono();
 
   configureAuth(settings.security);
+
+  const CAPTIVE_PORTAL_PATHS = new Set([
+    "/generate_204",
+    "/gen_204",
+    "/hotspot-detect.html",
+    "/library/test/success.html",
+    "/connecttest.txt",
+    "/ncsi.txt",
+    "/canonical.html",
+    "/success.txt",
+  ]);
+
+  app.use("*", async (c, next) => {
+    if (!isHotspotMode()) return next();
+
+    if (CAPTIVE_PORTAL_PATHS.has(c.req.path)) {
+      return c.redirect("/", 302);
+    }
+
+    const host = c.req.header("host") || "";
+    const isLocal =
+      host.startsWith("localhost") ||
+      host.startsWith("10.42.0.") ||
+      host.startsWith("192.168.");
+    if (!isLocal && host && !host.includes(".local")) {
+      return c.redirect("/", 302);
+    }
+
+    return next();
+  });
 
   app.use("*", cors({
     origin: "*",

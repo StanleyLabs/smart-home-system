@@ -59,6 +59,10 @@ fi
 echo "==> Ensuring avahi-daemon is running..."
 sudo systemctl enable --now avahi-daemon
 
+echo "==> Installing captive portal DNS config..."
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+sudo cp "$(dirname "$0")/../deploy/shs-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/
+
 echo "==> Setting up port redirect (80 -> 3000)..."
 sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null \
   || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000

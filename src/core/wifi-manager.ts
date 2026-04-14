@@ -3,6 +3,8 @@ import { exec } from "child_process";
 const HOTSPOT_SSID = "Smart-Home-System";
 const HOTSPOT_CON_NAME = "shs-hotspot";
 
+let hotspotActive = false;
+
 export interface WifiNetwork {
   ssid: string;
   signal: number;
@@ -109,6 +111,7 @@ export async function startHotspot(): Promise<WifiResult> {
   try {
     const status = await getStatus();
     if (status.hotspot_active) {
+      hotspotActive = true;
       return { success: true, message: "Hotspot already active" };
     }
 
@@ -133,6 +136,7 @@ export async function startHotspot(): Promise<WifiResult> {
 
     await run(`nmcli connection up ${HOTSPOT_CON_NAME}`);
 
+    hotspotActive = true;
     console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started on ${iface} (open network)`);
     return { success: true, message: `Hotspot "${HOTSPOT_SSID}" started` };
   } catch (err: any) {
@@ -150,6 +154,7 @@ export async function stopHotspot(): Promise<WifiResult> {
   try {
     await run(`nmcli connection down ${HOTSPOT_CON_NAME}`);
     await run(`nmcli connection delete ${HOTSPOT_CON_NAME}`).catch(() => {});
+    hotspotActive = false;
     console.log("[wifi] Hotspot stopped");
     return { success: true, message: "Hotspot stopped" };
   } catch (err: any) {
@@ -218,4 +223,8 @@ export async function checkConnectivity(): Promise<boolean> {
 
 export function getHotspotSsid(): string {
   return HOTSPOT_SSID;
+}
+
+export function isHotspotMode(): boolean {
+  return hotspotActive;
 }
