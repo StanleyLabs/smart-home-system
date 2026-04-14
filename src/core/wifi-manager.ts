@@ -1,7 +1,12 @@
 import { exec } from "child_process";
+import fs from "fs";
 
 const HOTSPOT_SSID = "Smart-Home-System";
 const HOTSPOT_CON_NAME = "shs-hotspot";
+const HOTSPOT_IP = "10.42.0.1";
+const DNSMASQ_CONF_DIR = "/etc/NetworkManager/dnsmasq-shared.d";
+const DNSMASQ_CONF_PATH = `${DNSMASQ_CONF_DIR}/shs-captive.conf`;
+const DNSMASQ_CONF_CONTENT = `address=/#/${HOTSPOT_IP}\n`;
 
 let hotspotActive = false;
 
@@ -134,10 +139,14 @@ export async function startHotspot(): Promise<WifiResult> {
       "ipv6.method disabled",
     ].join(" "));
 
+    await ensureCaptivePortalDns();
+
     await run(`nmcli connection up ${HOTSPOT_CON_NAME}`);
 
+    await ensureCaptivePortalRedirect();
+
     hotspotActive = true;
-    console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started on ${iface} (open network)`);
+    console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started on ${iface} (open network, captive portal enabled)`);
     return { success: true, message: `Hotspot "${HOTSPOT_SSID}" started` };
   } catch (err: any) {
     console.error("[wifi] hotspot start failed:", err.message);
@@ -154,6 +163,7 @@ export async function stopHotspot(): Promise<WifiResult> {
   try {
     await run(`nmcli connection down ${HOTSPOT_CON_NAME}`);
     await run(`nmcli connection delete ${HOTSPOT_CON_NAME}`).catch(() => {});
+    await removeCaptivePortalRedirect();
     hotspotActive = false;
     console.log("[wifi] Hotspot stopped");
     return { success: true, message: "Hotspot stopped" };
@@ -227,4 +237,36 @@ export function getHotspotSsid(): string {
 
 export function isHotspotMode(): boolean {
   return hotspotActive;
+}
+
+async function ensureCaptivePortalDns(): Promise<void> {
+  try {
+    if (!fs.existsSync(DNSMASQ_CONF_PATH)) {
+      await run(`sudo mkdir -p ${DNSMASQ_CONF_DIR}`);
+      await run(`sudo sh -c 'echo "${DNSMASQ_CONF_CONTENT.trim()}" > ${DNSMASQ_CONF_PATH}'`);
+      console.log("[wifi] Installed captive portal DNS config");
+    }
+  } catch (err: any) {
+    console.warn("[wifi] Could not install captive portal DNS config:", err.message);
+  }
+}
+
+async function ensureCaptivePortalRedirect(): Promise<void> {
+  try {
+    await run(
+      "sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null" +
+      " || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000"
+    );
+    console.log("[wifi] Port 80 → 3000 redirect active");
+  } catch (err: any) {
+    console.warn("[wifi] Could not set up port redirect:", err.message);
+  }
+}
+
+async function removeCaptivePortalRedirect(): Promise<void> {
+  try {
+    await run(
+      "sudo iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000"
+    );
+  } catch {}
 }
