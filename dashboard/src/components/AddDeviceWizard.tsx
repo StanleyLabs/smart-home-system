@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import QrScanner from 'qr-scanner';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../lib/api';
 import { subscribe } from '../lib/mqtt';
 import { setupPayloadIdentityKey } from '../lib/setup-payload-key';
@@ -80,77 +80,95 @@ function parseMatterQr(raw: string): string | null {
   return trimmed || null;
 }
 
-/** qr-scanner may call back with a string (legacy) or { data } (current API). */
-function decodeQrPayload(result: QrScanner.ScanResult | string): string {
-  return typeof result === 'string' ? result : result.data;
-}
-
 function MatterQrScanner({
   onScan,
-  onError,
   continuous,
 }: {
   onScan: (code: string) => void;
-  onError?: (err: string) => void;
   continuous?: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const reactId = useId().replace(/:/g, '');
+  const containerId = `matter-qr-${reactId}`;
   const onScanRef = useRef(onScan);
-  const onErrorRef = useRef(onError);
   const [status, setStatus] = useState<'loading' | 'active' | 'error'>('loading');
   const lastScanned = useRef('');
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   onScanRef.current = onScan;
-  onErrorRef.current = onError;
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    let cancelled = false;
+    const scanConfig = {
+      fps: 10,
+      qrbox: { width: 220, height: 220 },
+      aspectRatio: 1.777778,
+    };
 
-    let destroyed = false;
-    let scanner: QrScanner | null = null;
+    async function startCamera() {
+      const { Html5Qrcode } = await import('html5-qrcode');
+      if (cancelled) return;
 
-    async function start() {
-      if (destroyed || !videoRef.current) return;
+      const html5 = new Html5Qrcode(containerId, { verbose: false });
+      scannerRef.current = html5;
 
-      scanner = new QrScanner(videoRef.current, (result) => {
-        if (destroyed) return;
-        const val = decodeQrPayload(result);
-        if (!continuous && val === lastScanned.current) return;
-        const parsed = parseMatterQr(val);
-        if (parsed) {
-          lastScanned.current = val;
-          if (!continuous) {
-            destroyed = true;
-            scanner?.stop();
-          }
-          onScanRef.current(parsed);
+      const onDecoded = (decodedText: string) => {
+        if (cancelled) return;
+        const parsed = parseMatterQr(decodedText);
+        if (!parsed) return;
+        if (!continuous && decodedText === lastScanned.current) return;
+        lastScanned.current = decodedText;
+        onScanRef.current(parsed);
+        if (!continuous) {
+          void html5.stop().then(() => html5.clear()).catch(() => {});
         }
-      }, {
-        returnDetailedScanResult: true,
-        preferredCamera: 'environment',
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      });
+      };
+
+      const onFrameError = () => {
+        /* no QR in this frame — expected */
+      };
+
+      const runStart = async (camera: string | MediaTrackConstraints) => {
+        await html5.start(camera, scanConfig, onDecoded, onFrameError);
+      };
 
       try {
-        await scanner.start();
-        if (!destroyed) setStatus('active');
+        const cameras = await Html5Qrcode.getCameras();
+        if (cancelled) return;
+        if (cameras.length > 0) {
+          const preferred =
+            cameras.find((c) => /back|rear|environment/i.test(c.label)) ?? cameras[0];
+          await runStart(preferred.id);
+        } else {
+          await runStart({ facingMode: 'environment' });
+        }
+        if (!cancelled) setStatus('active');
       } catch {
-        if (!destroyed) {
-          setStatus('error');
-          onErrorRef.current?.('Camera not available');
+        try {
+          if (html5.isScanning) await html5.stop();
+          html5.clear();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await runStart({ facingMode: 'environment' });
+          if (!cancelled) setStatus('active');
+        } catch {
+          if (!cancelled) setStatus('error');
         }
       }
     }
 
-    start();
+    void startCamera();
+
     return () => {
-      destroyed = true;
-      scanner?.destroy();
-      scanner = null;
+      cancelled = true;
+      const s = scannerRef.current;
+      scannerRef.current = null;
+      if (s?.isScanning) {
+        void s.stop().then(() => s.clear()).catch(() => {});
+      }
     };
-  }, [continuous]);
+  }, [containerId, continuous]);
 
   if (status === 'error') {
     return (
@@ -160,21 +178,17 @@ function MatterQrScanner({
           <line x1="1" y1="1" x2="23" y2="23" strokeLinecap="round" />
         </svg>
         <p className="text-center text-sm text-[var(--text-muted)]">Camera not available</p>
+        <p className="text-center text-xs text-[var(--text-muted)]">Use HTTPS or localhost, and allow camera access when prompted.</p>
       </div>
     );
   }
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-black">
-      <video ref={videoRef} muted playsInline className="h-[240px] w-full object-cover" />
+      <div id={containerId} className="min-h-[240px] w-full [&_video]:max-h-[320px] [&_video]:w-full [&_video]:object-cover" />
       {status === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-        </div>
-      )}
-      {status === 'active' && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-40 w-40 rounded-2xl border-2 border-white/40" />
         </div>
       )}
     </div>
@@ -595,7 +609,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
           {/* ════ SCANNING VIEW ═══════════════════════════════════ */}
           {view === 'scanning' && (
             <div className="space-y-4">
-              <MatterQrScanner onScan={handleQrScanned} onError={openManualEntry} />
+              <MatterQrScanner onScan={handleQrScanned} />
               <p className="text-center text-xs text-[var(--text-muted)]">
                 Point at the QR code on the device box
               </p>
@@ -751,7 +765,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
                   {pairCredMode === 'qr' ? (
                     <div>
                       <p className="mb-2 text-sm text-[var(--text-secondary)]">Scan the QR code on your device</p>
-                      <MatterQrScanner onScan={handlePairQrScan} onError={() => setPairCredMode('manual')} />
+                      <MatterQrScanner onScan={handlePairQrScan} />
 
                       {selectedDevice.protocol === 'matter' && (
                         <div className="mt-3 space-y-2">
