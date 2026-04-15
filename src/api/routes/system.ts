@@ -1,4 +1,7 @@
 import { exec } from "child_process";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { Hono } from "hono";
 import type { Engine } from "../../core/engine.js";
 import { getPublicDashboardUrl, type SystemSettings } from "../../types.js";
@@ -13,6 +16,13 @@ import {
   getHotspotSsid,
 } from "../../core/wifi-manager.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "../../..");
+
+function resolveHubPath(relOrAbs: string): string {
+  return path.isAbsolute(relOrAbs) ? relOrAbs : path.join(PROJECT_ROOT, relOrAbs);
+}
+
 export function systemRoutes(engine: Engine, settings: SystemSettings) {
   const app = new Hono();
   const startTime = Date.now();
@@ -25,6 +35,24 @@ export function systemRoutes(engine: Engine, settings: SystemSettings) {
       device_count: engine.devices.getAll().length,
       online_count: engine.devices.getAll().filter((d) => d.online).length,
       adapters: engine.getAdapterStatuses(),
+    });
+  });
+
+  app.get("/ca-cert", (c) => {
+    const caPath = settings.network.tls?.ca_path;
+    if (!caPath || settings.network.protocol !== "https") {
+      return c.json({ error: "HTTPS is not enabled or no CA certificate configured" }, 404);
+    }
+    const abs = resolveHubPath(caPath);
+    if (!fs.existsSync(abs)) {
+      return c.json({ error: "CA certificate file not found" }, 404);
+    }
+    const pem = fs.readFileSync(abs);
+    return new Response(pem, {
+      headers: {
+        "Content-Type": "application/x-pem-file",
+        "Content-Disposition": 'attachment; filename="smart-home-hub-ca.pem"',
+      },
     });
   });
 

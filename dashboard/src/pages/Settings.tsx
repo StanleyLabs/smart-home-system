@@ -443,6 +443,21 @@ export default function Settings() {
                         </div>
                       )}
 
+                      {section === 'network' && sectionData.protocol === 'https' && (
+                        <div className="mt-4 rounded-lg border border-[var(--accent)]/25 bg-[var(--accent)]/5 px-4 py-3">
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            HTTPS is enabled.{' '}
+                            <a
+                              href="/trust"
+                              className="font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]"
+                            >
+                              Install the CA certificate
+                            </a>
+                            {' '}on each device to trust the hub&apos;s connection.
+                          </p>
+                        </div>
+                      )}
+
                       {err && (
                         <p
                           className="mt-4 text-sm text-[var(--danger)]"

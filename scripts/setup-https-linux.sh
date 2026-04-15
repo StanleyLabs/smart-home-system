@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 #
-# Generate a self-signed TLS certificate for the hub, enable HTTPS in config/system.json,
-# and persist iptables PREROUTING 443 -> (api_port + 1) where the TLS listener runs.
+# Generate a local CA and CA-signed TLS certificate for the hub, enable HTTPS in
+# config/system.json, install the CA into the Linux system trust store, and persist
+# iptables PREROUTING 443 -> (api_port + 1) where the TLS listener runs.
 # When HTTPS is enabled, the HTTP listener moves to api_port 3000 (for captive portal)
 # and the TLS listener runs on api_port + 1 (3001).
 #
+# The CA is generated once and reused across hostname changes so client devices that
+# have installed it stay trusted.  Use --force to regenerate both CA and hub cert.
+#
 # Run after ./scripts/setup-linux.sh (or ensure openssl + python3 + sudo for iptables).
-# Trust the cert on each client (browser warning) or replace certs/ with your own PEM files.
 #
 set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_JSON="${INSTALL_DIR}/config/system.json"
 CERT_DIR="${INSTALL_DIR}/certs"
+CA_CERT="ca.pem"
+CA_KEY="ca.key"
 CERT_FILE="hub.pem"
 KEY_FILE="hub.key"
+CA_CERT_REL="certs/${CA_CERT}"
 CERT_REL="certs/${CERT_FILE}"
 KEY_REL="certs/${KEY_FILE}"
 API_PORT=3000
@@ -97,8 +103,9 @@ echo "    HTTPS listener:  $HTTPS_LISTEN"
 echo "    Config file:     $CONFIG_JSON"
 
 if [ "$DRY_RUN" = true ]; then
-  echo "[dry-run] Would create ${CERT_DIR}/{${CERT_FILE},${KEY_FILE}}"
-  echo "[dry-run] Would set network.protocol=https, tls, api_port, https_listen_port, public_url_port if needed"
+  echo "[dry-run] Would create ${CERT_DIR}/{${CA_CERT},${CA_KEY},${CERT_FILE},${KEY_FILE}}"
+  echo "[dry-run] Would install CA into /usr/local/share/ca-certificates/"
+  echo "[dry-run] Would set network.protocol=https, tls (with ca_path), api_port, https_listen_port, public_url_port"
   if [ "$SKIP_IPTABLES" != true ] && [ "$HTTPS_LISTEN" != 443 ]; then
     echo "[dry-run] Would iptables: 443 -> ${HTTPS_LISTEN} (PREROUTING NAT)"
   fi
@@ -115,21 +122,54 @@ fi
 
 mkdir -p "$CERT_DIR"
 
-echo "==> Generating self-signed certificate (${CERT_FILE}, ${KEY_FILE})..."
-openssl req -x509 -newkey rsa:2048 -nodes \
+# --- Step A: Generate a local CA (preserved across hostname changes) ----------
+if [ ! -f "${CERT_DIR}/${CA_CERT}" ] || [ ! -f "${CERT_DIR}/${CA_KEY}" ] || [ "$FORCE" = true ]; then
+  echo "==> Generating local Certificate Authority (${CA_CERT}, ${CA_KEY})..."
+  openssl req -x509 -newkey rsa:2048 -nodes \
+    -keyout "${CERT_DIR}/${CA_KEY}" \
+    -out "${CERT_DIR}/${CA_CERT}" \
+    -days 3650 \
+    -subj "/CN=${SHORT} Hub CA"
+  chmod 600 "${CERT_DIR}/${CA_KEY}"
+  chmod 644 "${CERT_DIR}/${CA_CERT}"
+else
+  echo "==> Reusing existing CA (${CERT_DIR}/${CA_CERT}). Use --force to regenerate."
+fi
+
+# --- Step B: Generate hub cert signed by the CA ------------------------------
+echo "==> Generating CA-signed hub certificate (${CERT_FILE}, ${KEY_FILE})..."
+openssl req -newkey rsa:2048 -nodes \
   -keyout "${CERT_DIR}/${KEY_FILE}" \
-  -out "${CERT_DIR}/${CERT_FILE}" \
-  -days 3650 \
+  -out "${CERT_DIR}/hub.csr" \
   -subj "/CN=${HOSTNAME}" \
   -addext "subjectAltName=${SAN}"
 
+openssl x509 -req \
+  -in "${CERT_DIR}/hub.csr" \
+  -CA "${CERT_DIR}/${CA_CERT}" -CAkey "${CERT_DIR}/${CA_KEY}" -CAcreateserial \
+  -out "${CERT_DIR}/${CERT_FILE}" \
+  -days 3650 \
+  -copy_extensions copyall
+
+rm -f "${CERT_DIR}/hub.csr"
 chmod 600 "${CERT_DIR}/${KEY_FILE}"
 chmod 644 "${CERT_DIR}/${CERT_FILE}"
+
+# --- Step C: Install CA into the Linux system trust store --------------------
+echo "==> Installing CA into system trust store..."
+if [ -d /usr/local/share/ca-certificates ]; then
+  sudo cp "${CERT_DIR}/${CA_CERT}" /usr/local/share/ca-certificates/smart-home-hub-ca.crt
+  sudo update-ca-certificates 2>/dev/null || true
+  echo "    CA installed (smart-home-hub-ca.crt)"
+else
+  echo "    /usr/local/share/ca-certificates not found — skipping system trust store install."
+fi
 
 echo "==> Updating ${CONFIG_JSON} (network.protocol, tls, ports, hostname)..."
 export CONFIG_JSON_PATH="$CONFIG_JSON"
 export API_PORT="$API_PORT"
 export HTTPS_LISTEN="$HTTPS_LISTEN"
+export CA_CERT_REL="$CA_CERT_REL"
 export CERT_REL="$CERT_REL"
 export KEY_REL="$KEY_REL"
 export CERT_HOSTNAME="$HOSTNAME"
@@ -141,6 +181,7 @@ from pathlib import Path
 path = Path(os.environ["CONFIG_JSON_PATH"])
 api_port = int(os.environ["API_PORT"])
 https_listen = int(os.environ["HTTPS_LISTEN"])
+ca_cert_rel = os.environ["CA_CERT_REL"]
 cert_rel = os.environ["CERT_REL"]
 key_rel = os.environ["KEY_REL"]
 
@@ -150,7 +191,7 @@ net["protocol"] = "https"
 net["api_port"] = api_port
 net["https_listen_port"] = https_listen
 net["hostname"] = os.environ["CERT_HOSTNAME"].strip()
-net["tls"] = {"cert_path": cert_rel, "key_path": key_rel}
+net["tls"] = {"cert_path": cert_rel, "key_path": key_rel, "ca_path": ca_cert_rel}
 net["public_url_port"] = 443
 
 path.write_text(json.dumps(data, indent=2) + "\n")
@@ -184,9 +225,12 @@ fi
 echo ""
 echo "Done."
 echo "  • PEM files: ${CERT_DIR}/"
-echo "  • HTTP (captive): port ${API_PORT}  —  HTTPS: port ${HTTPS_LISTEN}  —  browsers use https://hostname/ (port 443 → ${HTTPS_LISTEN})"
+echo "  • CA certificate: ${CERT_DIR}/${CA_CERT} (installed into system trust store)"
+echo "  • HTTP (captive): port ${API_PORT}  —  HTTPS: port ${HTTPS_LISTEN}  —  browsers use https://${HOSTNAME}/ (port 443 → ${HTTPS_LISTEN})"
 echo "  • The hub also syncs these iptables rules on startup (no manual iptables steps)."
 echo "  • Restart the hub: npm run build && npm start   (or systemctl restart your unit)"
+echo ""
+echo "  Visit http://${HOSTNAME}/trust on each device to install the CA certificate (one-time)."
 echo ""
 echo "To undo HTTPS: set network.protocol to \"http\", remove network.tls, https_listen_port, public_url_port,"
 echo "  delete certs/, and adjust iptables."

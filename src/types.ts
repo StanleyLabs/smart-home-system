@@ -270,6 +270,8 @@ export interface SystemSettings {
     tls?: {
       cert_path: string;
       key_path: string;
+      /** Path to the local CA certificate used to sign the hub cert. Served at /api/system/ca-cert. */
+      ca_path?: string;
     };
     /**
      * If set, used for dashboard/API “public” URLs instead of api_port (e.g. 443 when Node listens on

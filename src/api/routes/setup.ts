@@ -177,11 +177,13 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
     }, 3000);
 
     const lanBase = getBaseUrl(settings.network);
+    const handoff = settings.network.protocol === "https"
+      ? `http://${settings.network.hostname}/trust`
+      : lanBase;
     return c.json({
       success: true,
       hostname: `${resolvedHostname}.local`,
-      /** URL to open on the home LAN after reconnecting (HTTPS or HTTP per config — not hotspot IP). */
-      handoff_url: lanBase,
+      handoff_url: handoff,
       message: `Hub will connect to "${ssid}" and be available at ${lanBase}`,
     });
   });

@@ -13,16 +13,23 @@ function resolveHubPath(relOrAbs: string): string {
 
 export function getTlsCredentials(
   network: SystemSettings["network"]
-): { key: Buffer; cert: Buffer } | null {
+): { key: Buffer; cert: Buffer; ca?: Buffer } | null {
   const tls = network.tls;
   if (!tls?.cert_path || !tls?.key_path) return null;
   const certPath = resolveHubPath(tls.cert_path);
   const keyPath = resolveHubPath(tls.key_path);
   if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) return null;
-  return {
+  const creds: { key: Buffer; cert: Buffer; ca?: Buffer } = {
     cert: fs.readFileSync(certPath),
     key: fs.readFileSync(keyPath),
   };
+  if (tls.ca_path) {
+    const caPath = resolveHubPath(tls.ca_path);
+    if (fs.existsSync(caPath)) {
+      creds.ca = fs.readFileSync(caPath);
+    }
+  }
+  return creds;
 }
 
 /**

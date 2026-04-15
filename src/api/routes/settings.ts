@@ -50,7 +50,7 @@ export function settingsRoutes(engine: Engine, settings: SystemSettings) {
       } else if (merged.protocol === "https") {
         merged.api_port = 3000;
         if (!merged.tls) {
-          merged.tls = { cert_path: "certs/hub.pem", key_path: "certs/hub.key" };
+          merged.tls = { cert_path: "certs/hub.pem", key_path: "certs/hub.key", ca_path: "certs/ca.pem" };
         }
         if (merged.https_listen_port == null) merged.https_listen_port = 3001;
         if (merged.public_url_port == null) merged.public_url_port = 443;

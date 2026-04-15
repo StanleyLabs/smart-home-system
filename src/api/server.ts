@@ -70,6 +70,18 @@ export function createServer(engine: Engine, settings: SystemSettings) {
     return next();
   });
 
+  const tlsConfigured = !!getTlsCredentials(settings.network);
+  if (tlsConfigured) {
+    const TRUST_EXEMPT = new Set(["/trust", "/api/system/ca-cert"]);
+    app.use("*", async (c, next) => {
+      const encrypted = !!(c.env as any)?.incoming?.socket?.encrypted;
+      if (encrypted) return next();
+      const p = c.req.path;
+      if (TRUST_EXEMPT.has(p) || p.startsWith("/assets/") || p.startsWith("/api/")) return next();
+      return c.redirect("/trust", 302);
+    });
+  }
+
   app.use("*", cors({
     origin: "*",
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],

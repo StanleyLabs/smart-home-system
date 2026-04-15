@@ -21,6 +21,7 @@ const Users = lazy(() => import('../pages/Users'));
 const Settings = lazy(() => import('../pages/Settings'));
 const Setup = lazy(() => import('../pages/Setup'));
 const Login = lazy(() => import('../pages/Login'));
+const Trust = lazy(() => import('../pages/Trust'));
 
 const rootRoute = createRootRoute({
   component: App,
@@ -36,6 +37,12 @@ const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
   component: () => <Suspense fallback={<Spinner />}><Setup /></Suspense>,
+});
+
+const trustRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/trust',
+  component: () => <Suspense fallback={<Spinner />}><Trust /></Suspense>,
 });
 
 const authenticatedRoute = createRoute({
@@ -106,6 +113,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
+  trustRoute,
   authenticatedRoute.addChildren([
     homeRoute,
     devicesRoute,
