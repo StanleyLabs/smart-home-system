@@ -373,15 +373,15 @@ function CaptiveSetup() {
                   onChange={(e) => setWifiPassword(e.target.value)}
                   placeholder=""
                   aria-label="Wi-Fi WPA network key"
-                  className="relative z-10 w-full min-w-0 bg-transparent px-4 py-3 font-mono text-base text-transparent caret-[var(--accent)] outline-none placeholder:text-transparent selection:bg-transparent selection:text-transparent"
+                  className="relative z-10 w-full min-w-0 bg-transparent px-4 py-3 font-mono text-sm leading-normal tracking-[0.14em] text-transparent caret-[var(--accent)] outline-none placeholder:text-transparent selection:bg-transparent selection:text-transparent"
                   style={{ WebkitTextFillColor: 'transparent' }}
                 />
                 <div
-                  className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden px-4 font-mono text-base whitespace-nowrap text-[var(--text-primary)]"
+                  className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden px-4 font-mono text-sm leading-normal whitespace-nowrap text-[var(--text-primary)]"
                   aria-hidden
                 >
                   {wifiPassword.length > 0 ? (
-                    <span>{'\u25CF'.repeat([...wifiPassword].length)}</span>
+                    <span className="tracking-[0.14em]">{'\u2022'.repeat([...wifiPassword].length)}</span>
                   ) : (
                     <span className="text-[var(--text-muted)]">Network key</span>
                   )}
