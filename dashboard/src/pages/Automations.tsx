@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 import { PencilIcon, TrashIcon } from '../components/action-icons';
 import { Toggle } from '../components/Toggle';
 import { Slider } from '../components/Slider';
@@ -479,7 +480,7 @@ export default function Automations() {
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Automations</h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            {loading ? 'Loading…' : `${rules.length} automation${rules.length === 1 ? '' : 's'}`}
+            {loading ? 'Loading\u2026' : `${rules.length} automation${rules.length === 1 ? '' : 's'}`}
           </p>
         </div>
         <button
@@ -496,6 +497,8 @@ export default function Automations() {
           {error}
         </div>
       )}
+
+      {loading && <Spinner />}
 
       {!loading && rules.length === 0 && (
         <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">

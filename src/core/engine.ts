@@ -17,6 +17,7 @@ import type {
   Protocol,
   SystemSettings,
 } from "../types.js";
+import { getActiveWifiCredentials } from "./wifi-manager.js";
 
 export type MqttPublisher = (topic: string, message: MqttEnvelope) => void;
 
@@ -29,14 +30,11 @@ export class Engine {
   readonly notifications: NotificationSystem;
   readonly setupQueue: SetupQueue;
 
-  private static readonly MAX_QUEUE_RETRIES = 10;
-
   private adapters = new Map<string, ProtocolAdapter>();
   private pendingDiscoveries = new Map<string, DiscoveredDevice>();
   private discoveryActive = false;
   private queueProcessing = new Set<string>();
   private queueDiscoveryTimer: ReturnType<typeof setInterval> | null = null;
-  private queueRetryCount = new Map<string, number>();
 
   publish: MqttPublisher = () => {};
 
@@ -502,7 +500,6 @@ export class Engine {
     if (failed.length === 0) return;
 
     for (const entry of failed) {
-      this.queueRetryCount.delete(entry.entry_id);
       this.setupQueue.updateStatus(entry.entry_id, "waiting", { error: undefined });
       this.publishSetupQueueEvent("entry_updated", {
         ...entry,
@@ -514,8 +511,8 @@ export class Engine {
     this.ensureQueueDiscovery();
   }
 
-  resetQueueRetries(entryId: string) {
-    this.queueRetryCount.delete(entryId);
+  resetQueueRetries(_entryId: string) {
+    // no-op — kept for API compatibility
   }
 
   /** Start discovery polling if there are waiting queue entries. */
@@ -529,6 +526,14 @@ export class Engine {
     }
 
     this.queueDiscoveryTimer = setInterval(() => {
+      const stale = this.setupQueue
+        .getAll()
+        .filter(e => e.status === "connecting" && !this.queueProcessing.has(e.entry_id));
+      for (const entry of stale) {
+        this.setupQueue.updateStatus(entry.entry_id, "waiting");
+        this.publishSetupQueueEvent("entry_updated", { ...entry, status: "waiting" });
+      }
+
       const stillWaiting = this.setupQueue.getWaiting();
       if (stillWaiting.length === 0) {
         this.stopQueueDiscovery();
@@ -545,6 +550,8 @@ export class Engine {
     }
   }
 
+  private static readonly QUEUE_COMMISSION_TIMEOUT = 35_000;
+
   /** Attempt to commission a single queue entry. */
   async processQueueEntry(entryId: string) {
     const entry = this.setupQueue.get(entryId);
@@ -554,16 +561,28 @@ export class Engine {
     this.setupQueue.updateStatus(entryId, "connecting");
     this.publishSetupQueueEvent("entry_updated", { ...entry, status: "connecting" });
 
-    try {
-      const device = await this.commissionManual(
-        entry.protocol,
-        { setup_code: entry.setup_payload }
-      );
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      console.log(`[SetupQueue] Commission timeout for ${entryId}`);
+      this.handleQueueEntryFailure(entryId, entry, "Device not reachable");
+    }, Engine.QUEUE_COMMISSION_TIMEOUT);
 
+    try {
+      const wifi = await getActiveWifiCredentials().catch(() => null);
+      const credentials: Record<string, string> = { setup_code: entry.setup_payload };
+      if (wifi) {
+        credentials.wifi_ssid = wifi.ssid;
+        credentials.wifi_password = wifi.password;
+      }
+
+      const device = await this.commissionManual(entry.protocol, credentials);
+      if (timedOut) return;
+
+      clearTimeout(timer);
       this.setupDevice(device.device_id, entry.name, entry.room_id ?? undefined);
 
       this.setupQueue.updateStatus(entryId, "online", { device_id: device.device_id });
-      this.queueRetryCount.delete(entryId);
       const updated = this.setupQueue.get(entryId)!;
       this.publishSetupQueueEvent("entry_updated", updated);
 
@@ -575,21 +594,21 @@ export class Engine {
         device_id: device.device_id,
       });
     } catch (err: any) {
-      const attempts = (this.queueRetryCount.get(entryId) ?? 0) + 1;
-      this.queueRetryCount.set(entryId, attempts);
-
-      if (attempts >= Engine.MAX_QUEUE_RETRIES) {
-        this.setupQueue.updateStatus(entryId, "failed", {
-          error: err.message ?? String(err),
-        });
-        const updated = this.setupQueue.get(entryId)!;
-        this.publishSetupQueueEvent("entry_updated", updated);
-      } else {
-        this.setupQueue.updateStatus(entryId, "waiting");
-      }
+      if (timedOut) return;
+      clearTimeout(timer);
+      this.handleQueueEntryFailure(entryId, entry, err.message ?? String(err));
     } finally {
+      clearTimeout(timer);
       this.queueProcessing.delete(entryId);
     }
+  }
+
+  private handleQueueEntryFailure(entryId: string, entry: { name: string }, errorMsg: string) {
+    console.log(`[SetupQueue] ${entry.name} failed: ${errorMsg}`);
+    this.setupQueue.updateStatus(entryId, "failed", { error: errorMsg });
+    const updated = this.setupQueue.get(entryId)!;
+    this.publishSetupQueueEvent("entry_updated", updated);
+    this.queueProcessing.delete(entryId);
   }
 
   /** Attempt all waiting queue entries. */

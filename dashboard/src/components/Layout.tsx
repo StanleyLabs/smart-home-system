@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
 import { api } from '../lib/api';
@@ -8,8 +8,8 @@ const navItems: { to: string; label: string; adminOnly?: boolean }[] = [
   { to: '/', label: 'Home' },
   { to: '/devices', label: 'Devices' },
   { to: '/rooms', label: 'Rooms' },
-  { to: '/automations', label: 'Automations' },
   { to: '/scenes', label: 'Scenes' },
+  { to: '/automations', label: 'Automations' },
   { to: '/notifications', label: 'Notifications' },
   { to: '/users', label: 'Users', adminOnly: true },
   { to: '/settings', label: 'Settings', adminOnly: true },
@@ -21,10 +21,14 @@ const activeLinkClass = 'bg-[var(--bg-card-active)] text-[var(--text-primary)]';
 const inactiveLinkClass =
   'text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]';
 
+const MOBILE_PRIMARY_COUNT = 4;
+
 export function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [hubName, setHubName] = useState('Smart Home');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const user = useAuthStore((s) => s.user);
@@ -40,6 +44,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const visibleNav = navItems.filter((item) => !item.adminOnly || isAdmin);
   const notificationCount = notifications.length;
+
+  const primaryNav = visibleNav.slice(0, MOBILE_PRIMARY_COUNT);
+  const moreNav = visibleNav.slice(MOBILE_PRIMARY_COUNT);
+  const isMoreRouteActive = moreNav.some(
+    (item) =>
+      location.pathname === item.to ||
+      (item.to !== '/' && location.pathname.startsWith(item.to)),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +77,10 @@ export function Layout({ children }: { children: ReactNode }) {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [userMenuOpen]);
+
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [location.pathname]);
 
   const applyTheme = useCallback(
     (t: string) => {
@@ -237,21 +253,75 @@ export function Layout({ children }: { children: ReactNode }) {
         <main className="min-h-0 flex-1 overflow-auto p-4">{children}</main>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-[var(--border)] bg-[var(--bg-secondary)] px-1 py-1 md:hidden">
-        {visibleNav.slice(0, 5).map((item) => (
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          aria-hidden
+        >
+          <div
+            className="absolute inset-0 bg-black/40 transition-opacity duration-200"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="absolute bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-2 right-2 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-2 shadow-xl transition-transform duration-200">
+            {moreNav.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                activeOptions={{ exact: item.to === '/' }}
+                className="flex w-full items-center rounded-lg px-3 py-3 text-sm font-medium text-[var(--text-secondary)] active:bg-[var(--bg-card-active)]"
+                activeProps={{
+                  className:
+                    'flex w-full items-center rounded-lg px-3 py-3 text-sm font-medium bg-[var(--bg-card-active)] text-[var(--accent)]',
+                }}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-50 grid gap-1 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 md:hidden"
+        style={{ gridTemplateColumns: `repeat(${primaryNav.length + (moreNav.length > 0 ? 1 : 0)}, 1fr)` }}
+      >
+        {primaryNav.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             activeOptions={{ exact: item.to === '/' }}
-            className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-2 text-[10px] font-medium text-[var(--text-secondary)]"
+            className="flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md py-2 text-[10px] font-medium text-[var(--text-secondary)]"
             activeProps={{
               className:
-                'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md bg-[var(--bg-card-active)] px-1 py-2 text-[10px] font-medium text-[var(--accent)]',
+                'flex flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md bg-[var(--bg-card-active)] py-2 text-[10px] font-medium text-[var(--accent)]',
             }}
           >
             <span className="truncate">{item.label}</span>
           </Link>
         ))}
+        {moreNav.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMoreOpen((o) => !o)}
+            aria-label="More"
+            className={`flex flex-col items-center justify-center overflow-hidden rounded-md py-2 ${
+              moreOpen || isMoreRouteActive
+                ? 'bg-[var(--bg-card-active)] text-[var(--accent)]'
+                : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            <svg
+              className="h-5 w-5"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
+          </button>
+        )}
       </nav>
     </div>
   );

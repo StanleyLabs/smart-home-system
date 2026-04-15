@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 import { Toggle } from '../components/Toggle';
 
@@ -253,6 +254,23 @@ export default function Settings() {
   const [saving, setSaving] = useState<SectionId | null>(null);
   const [resetting, setResetting] = useState<SectionId | null>(null);
   const [sectionError, setSectionError] = useState<Partial<Record<SectionId, string>>>({});
+  const sectionRefs = useRef<Partial<Record<SectionId, HTMLDivElement | null>>>({});
+  const initialMount = useRef(true);
+
+  useEffect(() => {
+    if (initialMount.current) {
+      initialMount.current = false;
+      return;
+    }
+    if (!open) return;
+    const id = requestAnimationFrame(() => {
+      sectionRefs.current[open]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open]);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -374,7 +392,7 @@ export default function Settings() {
         )}
 
         {loading ? (
-          <p className="text-[var(--text-muted)]">Loading settings…</p>
+          <Spinner />
         ) : (
           <div className="flex flex-col gap-3">
             {SECTIONS.map((section) => {
@@ -385,7 +403,10 @@ export default function Settings() {
               return (
                 <div
                   key={section}
-                  className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] transition-colors hover:border-[var(--border-hover)]"
+                  ref={(el) => {
+                    sectionRefs.current[section] = el;
+                  }}
+                  className="scroll-mt-18 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] transition-colors hover:border-[var(--border-hover)]"
                 >
                   <button
                     type="button"

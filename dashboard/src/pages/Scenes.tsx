@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 
 interface Scene {
   scene_id: string;
@@ -143,7 +144,7 @@ export default function Scenes() {
         </p>
       )}
 
-      {loading && <p className="text-[var(--text-secondary)]">Loading…</p>}
+      {loading && <Spinner />}
 
       {!loading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 import { useDeviceStore } from '../stores/device-store';
 import DeviceCard, { type DeviceCardDevice } from '../components/DeviceCard';
 
@@ -170,9 +171,7 @@ export default function Home() {
   };
 
   if (loading) {
-    return (
-      <div className="p-4 text-[var(--text-secondary)]">Loading…</div>
-    );
+    return <Spinner />;
   }
 
   if (error) {

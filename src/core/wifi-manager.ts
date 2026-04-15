@@ -317,6 +317,28 @@ export function isHotspotMode(): boolean {
   return hotspotActive;
 }
 
+/**
+ * Read the WiFi SSID and PSK for the active connection from NetworkManager.
+ * Returns null on non-Linux or if no WiFi connection is active.
+ */
+export async function getActiveWifiCredentials(): Promise<{ ssid: string; password: string } | null> {
+  if (process.platform !== "linux") return null;
+  try {
+    const status = await getStatus();
+    if (!status.ssid) return null;
+
+    const raw = await run(
+      `sudo nmcli -s -g 802-11-wireless-security.psk connection show "${status.ssid}"`
+    );
+    const password = raw.trim();
+    if (!password) return null;
+
+    return { ssid: status.ssid, password };
+  } catch {
+    return null;
+  }
+}
+
 export function setHttpListenPort(port: number): void {
   httpListenPort = port;
 }

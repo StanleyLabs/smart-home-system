@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
 import AddDeviceWizard from '../components/AddDeviceWizard';
@@ -401,9 +402,7 @@ export default function Devices() {
   }
 
   if (loading && !devices.length) {
-    return (
-      <div className="p-4 text-[var(--text-secondary)]">Loading…</div>
-    );
+    return <Spinner />;
   }
 
   return (

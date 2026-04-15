@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 
 interface NotificationRow {
   notification_id: string;
@@ -93,7 +94,7 @@ export default function Notifications() {
         </p>
       )}
 
-      {loading && <p className="text-[var(--text-secondary)]">Loading…</p>}
+      {loading && <Spinner />}
 
       {!loading && items.length === 0 && (
         <p className="text-[var(--text-muted)]">No notifications.</p>

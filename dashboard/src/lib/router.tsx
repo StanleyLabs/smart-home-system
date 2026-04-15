@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-router';
 import App from '../App';
 import { Layout } from '../components/Layout';
+import { Spinner } from '../components/Spinner';
 
 const Home = lazy(() => import('../pages/Home'));
 const Devices = lazy(() => import('../pages/Devices'));
@@ -28,13 +29,13 @@ const rootRoute = createRootRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  component: () => <Suspense><Login /></Suspense>,
+  component: () => <Suspense fallback={<Spinner />}><Login /></Suspense>,
 });
 
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/setup',
-  component: () => <Suspense><Setup /></Suspense>,
+  component: () => <Suspense fallback={<Spinner />}><Setup /></Suspense>,
 });
 
 const authenticatedRoute = createRoute({
@@ -47,7 +48,7 @@ const authenticatedRoute = createRoute({
   },
   component: () => (
     <Layout>
-      <Suspense>
+      <Suspense fallback={<Spinner />}>
         <Outlet />
       </Suspense>
     </Layout>

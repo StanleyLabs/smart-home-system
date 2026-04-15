@@ -229,17 +229,26 @@ export default function SetupQueuePanel({ rooms, onWaitingCountChange }: Props) 
                   {' · '}
                   {PROTOCOL_LABELS[entry.protocol] ?? entry.protocol}
                 </p>
-                {entry.error && <p className="mt-0.5 text-xs text-[var(--danger)]">{entry.error}</p>}
+                {entry.error && <p className="mt-0.5 text-[10px] leading-tight text-[var(--danger)]">{entry.error}</p>}
               </div>
               <QueueStatusBadge status={entry.status} />
               <div className="flex shrink-0 items-center gap-1">
-                {entry.status === 'failed' && (
+                {(entry.status === 'failed' || entry.status === 'waiting') && (
                   <button
                     type="button"
                     onClick={() => retryQueueEntry(entry.entry_id)}
                     className="rounded-lg px-1.5 py-1 text-xs text-[var(--accent)] hover:bg-[var(--bg-card-active)]"
                   >
-                    Retry
+                    {entry.status === 'failed' ? 'Retry' : 'Connect'}
+                  </button>
+                )}
+                {entry.status === 'connecting' && (
+                  <button
+                    type="button"
+                    onClick={() => removeQueueEntry(entry.entry_id)}
+                    className="rounded-lg px-1.5 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-active)]"
+                  >
+                    Cancel
                   </button>
                 )}
                 {entry.status !== 'connecting' && (

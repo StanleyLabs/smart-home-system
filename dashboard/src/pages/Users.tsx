@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 
 interface UserRow {
@@ -148,7 +149,7 @@ export default function Users() {
         </p>
       )}
 
-      {loading && <p className="text-[var(--text-secondary)]">Loading…</p>}
+      {loading && <Spinner />}
 
       {!loading && (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">

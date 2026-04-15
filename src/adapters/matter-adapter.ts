@@ -255,11 +255,14 @@ export class MatterAdapter implements ProtocolAdapter {
         ? { wifiSsid: credentials.wifi_ssid as string, wifiCredentials: credentials.wifi_password as string }
         : undefined;
 
-    const needsBle = wifiNetwork !== undefined && this.bleAvailable;
+    const useBle = this.bleAvailable && (wifiNetwork !== undefined || this.multicastBroken);
     const resolvedCapabilities =
       discoveryCapabilities !== undefined
-        ? { onIpNetwork: !!(discoveryCapabilities & 0x04), ble: !!(discoveryCapabilities & 0x02) }
-        : needsBle
+        ? {
+            onIpNetwork: !this.multicastBroken && !!(discoveryCapabilities & 0x04),
+            ble: useBle || !!(discoveryCapabilities & 0x02),
+          }
+        : useBle
           ? { ble: true, onIpNetwork: false }
           : undefined;
 
@@ -280,30 +283,39 @@ export class MatterAdapter implements ProtocolAdapter {
     };
 
     if (wifiNetwork) {
-      console.log(`[Matter] Wi-Fi credentials provided for SSID: ${wifiNetwork.wifiSsid}`);
-      if (!this.bleAvailable) {
-        console.warn("[Matter] BLE is not available — Wi-Fi provisioning may fail. The device must already be on the network for mDNS-only commissioning.");
-      }
+      console.log(`[Matter] Commissioning with Wi-Fi (${wifiNetwork.wifiSsid}), BLE=${this.bleAvailable}`);
+    }
+    if (this.multicastBroken) {
+      console.log(`[Matter] Multicast broken — discovery via ${useBle ? "BLE" : "mDNS fallback"}`);
     }
 
     if (this.multicastBroken && wifiNetwork) {
-      console.log("[Matter] Starting dns-sd watcher for post-WiFi operational discovery");
       this.dnsSdWatcher = watchOperationalDevices();
       await this.dnsSdWatcher.ready;
       this.dnsSdFallbackActive = true;
     }
 
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 30_000);
+
     try {
       console.log("[Matter] Commissioning device...");
-      const nodeId = await this.controller.commissionNode(options);
+      const nodeId = await Promise.race([
+        this.controller.commissionNode(options),
+        new Promise<never>((_, reject) => {
+          abort.signal.addEventListener("abort", () =>
+            reject(new Error("Device not reachable"))
+          );
+        }),
+      ]);
       const nodeIdStr = nodeId.toString();
-
       console.log(`[Matter] Commissioned node ${nodeIdStr}`);
-
       await this.connectAndSubscribe(nodeIdStr);
-
       return nodeIdStr;
     } finally {
+      clearTimeout(timer);
+      abort.abort();
+      try { this.controller?.cancelCommissionableDeviceDiscovery({}); } catch {}
       if (this.dnsSdWatcher) {
         this.dnsSdWatcher.stop();
         this.dnsSdWatcher = null;
