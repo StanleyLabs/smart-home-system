@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
@@ -16,6 +16,32 @@ type WifiStatus = {
   platform_supported: boolean;
   hotspot_ssid: string;
 };
+function getTimeZoneOptions(): string[] {
+  try {
+    const z = Intl.supportedValuesOf('timeZone');
+    return [...z].sort((a, b) => a.localeCompare(b, 'en'));
+  } catch {
+    return [
+      'UTC',
+      'America/New_York',
+      'America/Chicago',
+      'America/Denver',
+      'America/Los_Angeles',
+      'Europe/London',
+      'Europe/Paris',
+      'Asia/Tokyo',
+    ];
+  }
+}
+
+function defaultTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
 const SUGGESTED_ROOMS = [
   'Living Room',
   'Kitchen',
@@ -123,6 +149,8 @@ function CaptiveSetup() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
+  /** iOS treats `-webkit-text-security` like a password field (strong-password UI). Keep plain text; label says "key". */
+  const [wpaIgnoreIosPw, setWpaIgnoreIosPw] = useState(true);
 
   useEffect(() => {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
@@ -275,13 +303,18 @@ function CaptiveSetup() {
         )}
 
         <form
-          className="flex flex-col gap-6"
+          className="relative flex flex-col gap-6"
           autoComplete="off"
           onSubmit={(e) => {
             e.preventDefault();
             if (!loading && canSubmit()) void submit();
           }}
         >
+          {/* Absorbs some password-manager heuristics so the WPA field below isn&apos;t treated as a login password. */}
+          <div className="pointer-events-none absolute -left-[9999px] h-px w-px overflow-hidden opacity-0" aria-hidden>
+            <input type="text" name="shs_decoy_user" tabIndex={-1} autoComplete="username" readOnly />
+          </div>
+
           <h2 className="text-2xl font-semibold text-[var(--text-primary)]">WiFi</h2>
 
           {wifiNetworks.length > 0 && (
@@ -316,38 +349,55 @@ function CaptiveSetup() {
             </div>
           </div>
 
-          {/* WPA key: not type="password" — browsers treat that as a site login and offer "create/save password". */}
+          {/* WPA: mask with overlay bullets — not type=password / not -webkit-text-security (iOS strong-password). */}
           {selectedSsid && (
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="captive-wifi-wpa-key">
-                Password for {selectedSsid}
+                WPA key for {selectedSsid}
               </label>
-              <input
-                id="captive-wifi-wpa-key"
-                name="wifi-wpa-key"
-                type="text"
-                inputMode="text"
-                autoComplete="off"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                data-1p-ignore
-                data-lpignore="true"
-                value={wifiPassword}
-                onChange={(e) => setWifiPassword(e.target.value)}
-                placeholder="WiFi password"
-                className="[-webkit-text-security:disc] rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
-                aria-label="Wi-Fi network password"
-              />
+              <div className="relative overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-input)] focus-within:border-[var(--accent)]">
+                <input
+                  id="captive-wifi-wpa-key"
+                  name="wpa_psk"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-1p-ignore
+                  data-lpignore="true"
+                  readOnly={wpaIgnoreIosPw}
+                  onFocus={() => setWpaIgnoreIosPw(false)}
+                  value={wifiPassword}
+                  onChange={(e) => setWifiPassword(e.target.value)}
+                  placeholder=""
+                  aria-label="Wi-Fi WPA network key"
+                  className="relative z-10 w-full min-w-0 bg-transparent px-4 py-3 font-mono text-base text-transparent caret-[var(--accent)] outline-none placeholder:text-transparent selection:bg-transparent selection:text-transparent"
+                  style={{ WebkitTextFillColor: 'transparent' }}
+                />
+                <div
+                  className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden px-4 font-mono text-base whitespace-nowrap text-[var(--text-primary)]"
+                  aria-hidden
+                >
+                  {wifiPassword.length > 0 ? (
+                    <span>{'\u25CF'.repeat([...wifiPassword].length)}</span>
+                  ) : (
+                    <span className="text-[var(--text-muted)]">Network key</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="border-t border-[var(--border)] pt-6">
-            <h2 className="mb-4 text-2xl font-semibold text-[var(--text-primary)]">Hostname</h2>
+          <div className="border-t border-[var(--border)] pt-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="captive-hub-hostname">
-                How this hub appears on your network
+                Hostname
               </label>
+              <p className="text-xs leading-snug text-[var(--text-muted)]">
+                mDNS name on your LAN (e.g. <span className="font-mono text-[var(--text-secondary)]">smarthome.local</span>)
+              </p>
               <input
                 id="captive-hub-hostname"
                 name="hub-mdns-hostname"
@@ -355,7 +405,7 @@ function CaptiveSetup() {
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
                 placeholder="smarthome.local"
-                className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-base text-nowrap text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
               />
             </div>
           </div>
@@ -392,8 +442,9 @@ export default function Setup() {
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [hubName, setHubName] = useState('');
-  const [timezone, setTimezone] = useState('');
+  const [timezone, setTimezone] = useState(defaultTimeZone);
   const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
+  const timezoneOptions = useMemo(() => getTimeZoneOptions(), []);
   const [matterEnabled, setMatterEnabled] = useState(true);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
@@ -431,7 +482,7 @@ export default function Setup() {
     }
     if (n === 3) {
       if (hubName.trim().length < 1) next.hubName = 'Name your hub.';
-      if (timezone.trim().length < 1) next.timezone = 'Enter a timezone (e.g. America/New_York).';
+      if (timezone.trim().length < 1) next.timezone = 'Select a timezone.';
     }
     setFieldErrors(next);
     return Object.keys(next).length === 0;
@@ -646,21 +697,56 @@ export default function Setup() {
               {fieldErrors.hubName && <p className="text-sm text-[var(--danger)]">{fieldErrors.hubName}</p>}
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[var(--text-secondary)]">Timezone</label>
-              <input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g. America/Los_Angeles" className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]" />
+              <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="setup-timezone">
+                Timezone
+              </label>
+              <select
+                id="setup-timezone"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              >
+                <option value="">Select timezone&hellip;</option>
+                {timezoneOptions.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
               {fieldErrors.timezone && <p className="text-sm text-[var(--danger)]">{fieldErrors.timezone}</p>}
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] px-5 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-medium text-[var(--text-primary)]">Temperature unit</p>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">Temperature unit</p>
                 <p className="text-sm text-[var(--text-muted)]">Fahrenheit or Celsius</p>
               </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-sm ${tempUnit === 'F' ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>°F</span>
-                <button type="button" onClick={() => setTempUnit((u) => (u === 'F' ? 'C' : 'F'))} className={`relative h-9 w-16 rounded-full border border-[var(--border)] transition-colors ${tempUnit === 'C' ? 'bg-[var(--accent)]' : 'bg-[var(--bg-card-active)]'}`} aria-label="Toggle temperature unit">
-                  <span className={`absolute top-1 h-7 w-7 rounded-full bg-[var(--text-primary)] shadow transition-transform ${tempUnit === 'C' ? 'left-8' : 'left-1'}`} />
+              <div
+                className="inline-flex shrink-0 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-1 shadow-inner shadow-black/10"
+                role="group"
+                aria-label="Temperature unit"
+              >
+                <button
+                  type="button"
+                  onClick={() => setTempUnit('F')}
+                  className={`min-w-[4.5rem] rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                    tempUnit === 'F'
+                      ? 'bg-[var(--accent)] text-white shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  &deg;F
                 </button>
-                <span className={`text-sm ${tempUnit === 'C' ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>°C</span>
+                <button
+                  type="button"
+                  onClick={() => setTempUnit('C')}
+                  className={`min-w-[4.5rem] rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                    tempUnit === 'C'
+                      ? 'bg-[var(--accent)] text-white shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  &deg;C
+                </button>
               </div>
             </div>
           </div>
