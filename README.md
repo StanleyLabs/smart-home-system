@@ -27,18 +27,16 @@ Mobile browsers only expose the camera on a **secure context** (HTTPS or `localh
 This script:
 
 - Creates `certs/hub.pem` and `certs/hub.key` (self-signed; SAN includes your `network.hostname` from `config/system.json` plus `localhost`).
-- Sets `network.protocol` to `https`, `network.tls`, keeps the hub on **port 3000** by default, and sets **`network.public_url_port` to 443** so dashboard URLs show `https://hostname/` while Node still listens on 3000.
-- Adds and persists an iptables rule **443 → 3000** (same idea as the existing **80 → 3000** rule).
+- Sets `network.protocol` to `https`, `network.tls`, **`network.api_port`** to **3000** (plain **HTTP** — captive / `http://`), **`network.https_listen_port`** to **3001** (TLS — `https://`), and **`network.public_url_port`** to **443** so dashboard URLs show `https://hostname/`.
+- Adds and persists iptables **443 → https_listen_port** (default **3001**). Port **80 → 3000** is unchanged.
 
-Options: `--force` (replace existing certs), `--no-iptables`, `--dry-run`, `--api-port 443` (only if Node can bind to 443). Run `./scripts/setup-https-linux.sh --help` for details.
+**Upgrading from an older layout:** Re-run this script or restart the hub — startup and this script both **strip legacy `443 → 3000`** rules and apply **`443 → https_listen_port`** automatically (needs passwordless `sudo iptables` as in `setup-linux.sh`).
 
-**Manual setup:** Put your own PEM files under e.g. `certs/`, set `network.protocol`, `network.tls.cert_path`, `network.tls.key_path`, and optionally `network.public_url_port` if you use port mapping. Restart the hub and trust the cert on each phone (or use your own CA).
+Options: `--force` (replace existing certs), `--no-iptables`, `--dry-run`, `--api-port N`. Run `./scripts/setup-https-linux.sh --help` for details.
 
-Binding directly to port **443** in Node requires elevated privileges (`setcap 'cap_net_bind_service=+ep' $(which node)`) or a reverse proxy; the default script avoids that by using 3000 + NAT.
+**Manual setup:** Put your own PEM files under e.g. `certs/`, set `network.protocol`, `network.tls`, **`https_listen_port`** (must differ from `api_port`), and `public_url_port` if needed. Restart the hub and trust the cert on each phone (or use your own CA).
 
-**Captive hotspot vs HTTPS:** With TLS enabled, the API still serves **plain HTTP** on `api_port` while the hotspot is up (port 80 is NAT’d to the hub; HTTPS-only on that port would break captive detection). `GET /api/system/wifi/status` **`public_base_url`** is **`http://<hotspot-ip>/`** during hotspot and switches to your normal **`https://…`** base URL from config once the hotspot is off and the hub is on the LAN (restart the process after WiFi handoff so the listener upgrades to HTTPS).
-
-First-time setup vs WiFi recovery both use the same HTTP captive listener; only the **post-reconnect** URL changes to HTTPS when TLS is configured.
+**Captive vs LAN:** The hub serves **HTTP on `api_port`** and **HTTPS on `https_listen_port`** whenever TLS is enabled — no restart is required after WiFi handoff. `GET /api/system/wifi/status` **`public_base_url`** is **`http://<hotspot-ip>/`** while the hotspot is active, then your **`https://…`** base URL on the LAN.
 
 ## Architecture
 
@@ -132,7 +130,7 @@ That's it. The setup script configures sudoers, iptables, captive portal DNS, an
 | `build-essential`, `python3` | Compile native npm modules (`bcrypt`, `better-sqlite3`) |
 | `avahi-daemon`, `avahi-utils`, `libnss-mdns` | mDNS discovery for Matter devices |
 | `wireless-tools`, `network-manager` | WiFi onboarding hotspot, scanning, and connection (`nmcli`) |
-| `iptables-persistent` | Persist port 80 → 3000 (and 443 → api_port when HTTPS is enabled) across reboots |
+| `iptables-persistent` | Persist port 80 → 3000 (and 443 → https_listen_port when HTTPS is enabled) across reboots |
 | `bluetooth`, `bluez`, `libbluetooth-dev` | BLE commissioning (optional, use `--ble`) |
 | Node.js 20+ | Runtime (installed via NodeSource if missing) |
 
@@ -142,7 +140,7 @@ The hub process never runs as root. A narrowly scoped sudoers file (installed by
 
 | Command | Purpose |
 |---------|---------|
-| `iptables` | Port 80 → 3000 for captive portal; 443 → api_port when HTTPS is configured |
+| `iptables` | Port 80 → 3000 for captive portal; 443 → https_listen_port (e.g. 3001) when HTTPS is configured |
 | `scripts/set-hostname.sh` | Apply mDNS hostname changes |
 | `scripts/install-captive-conf.sh` | Install captive portal DNS config |
 

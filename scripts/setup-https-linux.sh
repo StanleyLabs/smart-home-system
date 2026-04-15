@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # Generate a self-signed TLS certificate for the hub, enable HTTPS in config/system.json,
-# set public_url_port when Node stays on 3000 with iptables 443 -> 3000, and persist that rule.
+# and persist iptables PREROUTING 443 -> (api_port + 1) where the TLS listener runs.
+# Plain HTTP stays on api_port (default 3000) for the captive portal.
 #
-# Run after ./scripts/setup-linux.sh (or ensure openssl, python3, and sudo for iptables).
+# Run after ./scripts/setup-linux.sh (or ensure openssl + python3 + sudo for iptables).
 # Trust the cert on each client (browser warning) or replace certs/ with your own PEM files.
 #
 set -euo pipefail
@@ -22,9 +23,9 @@ DRY_RUN=false
 
 usage() {
   echo "Usage: $0 [options]"
-  echo "  --api-port N   Hub listen port (default: 3000). Use 443 only if Node may bind to it (needs cap/setcap)."
+  echo "  --api-port N   Plain HTTP / captive port (default: 3000). HTTPS uses N+1 unless set in config."
   echo "  --force        Regenerate cert/key even if they already exist."
-  echo "  --no-iptables  Do not add or persist the 443 -> api_port NAT rule."
+  echo "  --no-iptables  Do not add or persist the 443 -> HTTPS listener NAT rule."
   echo "  --dry-run      Print actions only; do not write files or run iptables."
   echo "  -h, --help     Show this help."
 }
@@ -42,6 +43,8 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
+
+HTTPS_LISTEN=$((API_PORT + 1))
 
 if ! command -v openssl &>/dev/null; then
   echo "Error: openssl is required. Install with: sudo apt-get install -y openssl" >&2
@@ -67,17 +70,18 @@ else
 fi
 
 echo "==> Hub HTTPS setup"
-echo "    Install dir:  $INSTALL_DIR"
-echo "    Hostname:     $HOSTNAME (from config)"
-echo "    Cert SAN:     $SAN"
-echo "    API port:     $API_PORT"
-echo "    Config file:  $CONFIG_JSON"
+echo "    Install dir:     $INSTALL_DIR"
+echo "    Hostname:        $HOSTNAME (from config)"
+echo "    Cert SAN:        $SAN"
+echo "    HTTP (captive):  $API_PORT"
+echo "    HTTPS listener:  $HTTPS_LISTEN"
+echo "    Config file:     $CONFIG_JSON"
 
 if [ "$DRY_RUN" = true ]; then
   echo "[dry-run] Would create ${CERT_DIR}/{${CERT_FILE},${KEY_FILE}}"
-  echo "[dry-run] Would set network.protocol=https, tls paths, api_port=${API_PORT}, public_url_port if needed"
-  if [ "$SKIP_IPTABLES" != true ] && [ "$API_PORT" != 443 ]; then
-    echo "[dry-run] Would iptables: 443 -> ${API_PORT} (PREROUTING NAT)"
+  echo "[dry-run] Would set network.protocol=https, tls, api_port, https_listen_port, public_url_port if needed"
+  if [ "$SKIP_IPTABLES" != true ] && [ "$HTTPS_LISTEN" != 443 ]; then
+    echo "[dry-run] Would iptables: 443 -> ${HTTPS_LISTEN} (PREROUTING NAT)"
   fi
   exit 0
 fi
@@ -103,22 +107,23 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 chmod 600 "${CERT_DIR}/${KEY_FILE}"
 chmod 644 "${CERT_DIR}/${CERT_FILE}"
 
-echo "==> Updating ${CONFIG_JSON} (network.protocol, tls, api_port, public_url_port)..."
+echo "==> Updating ${CONFIG_JSON} (network.protocol, tls, ports)..."
 python3 - <<PY
 import json
 from pathlib import Path
 
 path = Path("${CONFIG_JSON}")
 api_port = int("${API_PORT}")
+https_listen = int("${HTTPS_LISTEN}")
 data = json.loads(path.read_text())
 net = data.setdefault("network", {})
 net["protocol"] = "https"
 net["api_port"] = api_port
+net["https_listen_port"] = https_listen
 net["tls"] = {
     "cert_path": "${CERT_REL}",
     "key_path": "${KEY_REL}",
 }
-# Browsers use https://hostname/ (port 443) while Node listens on 3000 behind NAT.
 if api_port == 3000:
     net["public_url_port"] = 443
 else:
@@ -130,13 +135,18 @@ PY
 if [ "$SKIP_IPTABLES" = true ]; then
   echo "==> Skipping iptables (--no-iptables)."
 else
-  if [ "$API_PORT" -eq 443 ]; then
-    echo "==> api_port is 443; no 443->port NAT rule needed."
+  if [ "$HTTPS_LISTEN" -eq 443 ]; then
+    echo "==> HTTPS listens on 443; no 443→port NAT rule needed."
   else
-    echo "==> iptables: redirect TCP 443 -> ${API_PORT} (same idea as port 80 -> 3000)..."
-    RULE="-p tcp --dport 443 -j REDIRECT --to-port ${API_PORT}"
-    sudo iptables -t nat -C PREROUTING ${RULE} 2>/dev/null \
-      || sudo iptables -t nat -A PREROUTING ${RULE}
+    echo "==> iptables: remove legacy 443 -> 3000 (if any), then set 443 -> ${HTTPS_LISTEN}..."
+    while sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3000 2>/dev/null; do
+      echo "    removed legacy 443 -> 3000"
+    done
+    while sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port "${HTTPS_LISTEN}" 2>/dev/null; do
+      true
+    done
+    RULE="-p tcp --dport 443 -j REDIRECT --to-port ${HTTPS_LISTEN}"
+    sudo iptables -t nat -A PREROUTING ${RULE}
     if command -v iptables-save &>/dev/null; then
       sudo apt-get install -y iptables-persistent 2>/dev/null || true
       if [ -d /etc/iptables ]; then
@@ -150,9 +160,9 @@ fi
 echo ""
 echo "Done."
 echo "  • PEM files: ${CERT_DIR}/"
-echo "  • Open the dashboard at the URL printed by the hub (see public_base_url in /api/system/wifi/status)."
-echo "  • Typical URL: https://${HOSTNAME}/ (accept the browser warning on each device, or install your own CA)"
+echo "  • HTTP (captive): port ${API_PORT}  —  HTTPS: port ${HTTPS_LISTEN}  —  browsers use https://hostname/ (port 443 → ${HTTPS_LISTEN})"
+echo "  • The hub also syncs these iptables rules on startup (no manual iptables steps)."
 echo "  • Restart the hub: npm run build && npm start   (or systemctl restart your unit)"
 echo ""
-echo "To undo HTTPS: set network.protocol to \"http\", remove network.tls and network.public_url_port,"
-echo "  delete certs/, and remove the iptables 443 redirect if you added it."
+echo "To undo HTTPS: set network.protocol to \"http\", remove network.tls, https_listen_port, public_url_port,"
+echo "  delete certs/, and adjust iptables."

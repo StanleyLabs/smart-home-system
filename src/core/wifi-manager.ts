@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getHttpsListenPort, type SystemSettings } from "../types.js";
 import { startCaptiveDns, stopCaptiveDns, getCaptiveDnsPort } from "./captive-dns.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -355,21 +356,76 @@ export async function ensureGlobalPort80Redirect(): Promise<void> {
   await ensureCaptivePortalRedirect(undefined);
 }
 
-/** Same pattern as port 80: external 443 → hub api_port when TLS terminates on the Node server. */
-export async function ensureGlobalPort443Redirect(apiPort: number): Promise<void> {
-  if (apiPort === 443) {
-    console.log("[wifi] Hub listens on 443; skipping 443→api_port NAT rule");
+/** Same pattern as port 80: external 443 → hub HTTPS listener port (not the plain-HTTP api_port). */
+export async function ensureGlobalPort443Redirect(httpsListenPort: number): Promise<void> {
+  if (httpsListenPort === 443) {
+    console.log("[wifi] Hub HTTPS listens on 443; skipping 443→port NAT rule");
     return;
   }
   try {
-    const rule = `-p tcp --dport 443 -j REDIRECT --to-port ${apiPort}`;
+    const rule = `-p tcp --dport 443 -j REDIRECT --to-port ${httpsListenPort}`;
     await run(
       `sudo iptables -t nat -C PREROUTING ${rule} 2>/dev/null` +
         ` || sudo iptables -t nat -A PREROUTING ${rule}`
     );
-    console.log(`[wifi] Port 443 → ${apiPort} redirect active`);
+    console.log(`[wifi] Port 443 → ${httpsListenPort} (HTTPS) redirect active`);
   } catch (err: any) {
     console.warn("[wifi] Could not set up HTTPS port redirect:", err.message);
+  }
+}
+
+/** Remove every PREROUTING rule: 443 → toPort (iptables allows duplicate rules). */
+async function removeAllNat443To(toPort: number): Promise<number> {
+  if (process.platform !== "linux") return 0;
+  let n = 0;
+  for (;;) {
+    try {
+      await run(
+        `sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port ${toPort}`
+      );
+      n++;
+    } catch {
+      break;
+    }
+  }
+  return n;
+}
+
+/**
+ * Drops the old mistaken 443→3000 redirect (HTTPS must not hit the HTTP listener), then ensures
+ * 443 → {@link getHttpsListenPort}. Runs on hub boot when HTTPS is enabled; also safe to call after WiFi handoff.
+ */
+export async function syncHttpsLanPortForwarding(
+  network: SystemSettings["network"]
+): Promise<void> {
+  if (process.platform !== "linux") return;
+  if (network.protocol !== "https" || !network.tls) return;
+
+  try {
+    const target = getHttpsListenPort(network);
+
+    const legacy = await removeAllNat443To(3000);
+    if (legacy > 0) {
+      console.log(
+        `[wifi] Removed legacy iptables 443 → 3000 (${legacy} rule(s)); HTTPS uses port ${target}`
+      );
+    }
+
+    await removeAllNat443To(target);
+    await ensureGlobalPort443Redirect(target);
+
+    try {
+      if (fs.existsSync("/etc/iptables/rules.v4")) {
+        await run(`sudo sh -c 'iptables-save > /etc/iptables/rules.v4'`);
+      }
+    } catch {
+      /* persistence optional */
+    }
+  } catch (err: any) {
+    console.warn(
+      "[wifi] HTTPS iptables sync skipped (needs passwordless sudo for iptables, see setup-linux.sh):",
+      err?.message || err
+    );
   }
 }
 

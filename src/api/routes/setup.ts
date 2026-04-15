@@ -9,8 +9,8 @@ import { getBaseUrl, type SystemSettings } from "../../types.js";
 import { applyHostname } from "../../core/hostname.js";
 import {
   connectToWifi,
-  ensureGlobalPort443Redirect,
   ensureGlobalPort80Redirect,
+  syncHttpsLanPortForwarding,
 } from "../../core/wifi-manager.js";
 import {
   hashPassword,
@@ -146,7 +146,7 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         await applyHostname(`${resolvedHostname}.local`);
         await ensureGlobalPort80Redirect();
         if (settings.network.protocol === "https") {
-          await ensureGlobalPort443Redirect(settings.network.api_port);
+          await syncHttpsLanPortForwarding(settings.network);
         }
         console.log(
           isSetupComplete()

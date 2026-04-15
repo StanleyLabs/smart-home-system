@@ -1,14 +1,17 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import fs from "fs";
 import { createServer as createHttpsServer } from "node:https";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
 import { getTlsCredentials } from "../core/network-tls.js";
-import { getPublicDashboardUrl, type SystemSettings } from "../types.js";
+import {
+  getHttpsListenPort,
+  getPublicDashboardUrl,
+  type SystemSettings,
+} from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
 import { isHotspotMode, getHotspotIp } from "../core/wifi-manager.js";
 import { deviceRoutes } from "./routes/devices.js";
@@ -121,47 +124,43 @@ export function createServer(engine: Engine, settings: SystemSettings) {
   return app;
 }
 
-export function startServer(
-  engine: Engine,
-  settings: SystemSettings
-): ReturnType<typeof serve> {
-  const app = createServer(engine, settings);
-  const port = settings.network.api_port;
-  const tls = getTlsCredentials(settings.network);
-  /** Captive portals use plain HTTP (port 80 → api_port). TLS on this port would break hotspot detection. */
-  const useHttps = Boolean(tls) && !isHotspotMode();
-
-  const server = serve({
-    fetch: app.fetch,
-    port,
-    ...(useHttps && tls
-      ? {
-          createServer: createHttpsServer,
-          serverOptions: tls,
-        }
-      : {}),
-  });
-
-  if (tls && !useHttps) {
-    console.warn(
-      "[api] Serving HTTP on port %s (WiFi hotspot / captive portal). " +
-        "After the hub joins your LAN WiFi, restart the process to enable HTTPS for browsers.",
-      port
-    );
-  }
-
-  server.on("error", (err: NodeJS.ErrnoException) => {
+function bindListenError(port: number, label: string) {
+  return (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
       const hint = process.platform === "linux"
         ? `\`fuser -k ${port}/tcp\` or \`ss -tlnp sport = :${port}\``
         : `\`lsof -ti :${port} | xargs kill -9\``;
       console.error(
-        `Port ${port} is already in use. Stop the other process (e.g. ${hint}) or set a different network.api_port in config/system.json.`
+        `${label}: port ${port} is already in use. Stop the other process (e.g. ${hint}) or change ports in config/system.json.`
       );
       process.exit(1);
     }
     throw err;
-  });
+  };
+}
+
+export function startServer(engine: Engine, settings: SystemSettings): void {
+  const app = createServer(engine, settings);
+  const httpPort = settings.network.api_port;
+  const tls = getTlsCredentials(settings.network);
+
+  /** Plain HTTP on api_port: captive portal (80→port) and optional direct http:// access. */
+  const httpServer = serve({ fetch: app.fetch, port: httpPort });
+  httpServer.on("error", bindListenError(httpPort, "HTTP"));
+
+  if (tls) {
+    const tlsPort = getHttpsListenPort(settings.network);
+    const httpsServer = serve({
+      fetch: app.fetch,
+      port: tlsPort,
+      createServer: createHttpsServer,
+      serverOptions: tls,
+    });
+    httpsServer.on("error", bindListenError(tlsPort, "HTTPS"));
+    console.log(
+      `[api] HTTPS listener on port ${tlsPort} (iptables: 443 → ${tlsPort} when using NAT)`
+    );
+  }
 
   const displayUrl = isHotspotMode()
     ? getPublicDashboardUrl(settings.network, {
@@ -170,7 +169,6 @@ export function startServer(
       })
     : getPublicDashboardUrl(settings.network, { hotspot_active: false });
   console.log(
-    `API server listening on ${displayUrl} (${useHttps ? "HTTPS" : "HTTP"})`
+    `[api] HTTP on port ${httpPort} (${tls ? "and TLS on separate port — see above" : "only"}) — public URL: ${displayUrl}`
   );
-  return server;
 }

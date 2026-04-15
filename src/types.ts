@@ -276,6 +276,11 @@ export interface SystemSettings {
      * 3000 and iptables maps 443 → 3000).
      */
     public_url_port?: number;
+    /**
+     * When TLS is enabled, HTTPS listens here while {@link api_port} stays plain HTTP (captive portal).
+     * Defaults to api_port + 1 (e.g. 3001); iptables should map 443 → this port.
+     */
+    https_listen_port?: number;
     mqtt: {
       broker_host: string;
       broker_port: number;
@@ -360,4 +365,10 @@ export function getPublicDashboardUrl(
     return "http://127.0.0.1/";
   }
   return `http://${ip}/`;
+}
+
+/** Port where the TLS listener is bound when `network.tls` is set; irrelevant without TLS. */
+export function getHttpsListenPort(network: SystemSettings["network"]): number {
+  if (!network.tls) return network.api_port;
+  return network.https_listen_port ?? network.api_port + 1;
 }

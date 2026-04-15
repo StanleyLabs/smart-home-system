@@ -40,12 +40,20 @@ export function validateHubTlsConfig(network: SystemSettings["network"]): void {
       );
       process.exit(1);
     }
+    const httpsPort = network.https_listen_port ?? network.api_port + 1;
+    if (httpsPort === network.api_port) {
+      console.error(
+        "When TLS is enabled, https_listen_port must differ from api_port: HTTP stays on api_port " +
+          "(captive portal); HTTPS uses https_listen_port (default api_port + 1)."
+      );
+      process.exit(1);
+    }
     return;
   }
   if (creds) {
     console.error(
       "network.tls is set and certificate files were found, but network.protocol is not " +
-        '"https". Set network.protocol to "https" (and usually api_port to 443) or remove tls paths.'
+        '"https". Set network.protocol to "https" or remove tls paths.'
     );
     process.exit(1);
   }
