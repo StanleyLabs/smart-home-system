@@ -30,7 +30,7 @@ type CommissionedDevice = {
 
 type CommissioningStatus = 'idle' | 'pairing' | 'configuring' | 'complete' | 'failed';
 
-type View = 'main' | 'scanning' | 'scanned' | 'manual' | 'pairing' | 'setup';
+type View = 'main' | 'scanning' | 'manual' | 'pairing' | 'setup';
 
 type Props = {
   rooms: Room[];
@@ -75,9 +75,28 @@ function DeviceTypeIcon({ type }: { type: string }) {
 }
 
 function parseMatterQr(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('MT:')) return trimmed;
-  if (/^\d{8,}$/.test(trimmed.replace(/[-\s]/g, ''))) return trimmed;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.replace(/^\uFEFF/, '').trim();
+  if (!trimmed) return null;
+
+  const embedded = trimmed.match(/\bMT:[^\s)>\]]+/i);
+  if (embedded) {
+    let code = embedded[0];
+    try {
+      code = decodeURIComponent(code);
+    } catch {
+      /* keep raw segment */
+    }
+    if (/^mt:/i.test(code)) code = 'MT:' + code.slice(3);
+    return code.replace(/\s+/g, '');
+  }
+
+  if (/^mt:/i.test(trimmed)) return ('MT' + trimmed.slice(2)).replace(/\s+/g, '');
+  if (trimmed.startsWith('MT:')) return trimmed.replace(/\s+/g, '');
+
+  const digits = trimmed.replace(/[-\s]/g, '');
+  if (/^\d{8,}$/.test(digits)) return trimmed;
+
   return trimmed || null;
 }
 
@@ -87,13 +106,7 @@ function canUseQrCamera(): boolean {
   return typeof navigator.mediaDevices?.getUserMedia === 'function';
 }
 
-function MatterQrScanner({
-  onScan,
-  continuous,
-}: {
-  onScan: (code: string) => void;
-  continuous?: boolean;
-}) {
+function MatterQrScanner({ onScan }: { onScan: (code: string) => void }) {
   const reactId = useId().replace(/:/g, '');
   const containerId = `matter-qr-${reactId}`;
   const fileScanId = `${containerId}-fs`;
@@ -115,7 +128,7 @@ function MatterQrScanner({
         const html5 = new Html5Qrcode(fileScanId, {
           verbose: false,
           formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          experimentalFeatures: { useBarCodeDetectorIfSupported: false },
         });
         try {
           const text = await html5.scanFile(file, false);
@@ -157,7 +170,9 @@ function MatterQrScanner({
       const html5 = new Html5Qrcode(containerId, {
         verbose: false,
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        // ZXing-only: native BarcodeDetector can “find” a QR (green box) while the
+        // alternating decoder path fails to deliver text consistently on some devices.
+        experimentalFeatures: { useBarCodeDetectorIfSupported: false },
       });
       scannerRef.current = html5;
 
@@ -165,12 +180,10 @@ function MatterQrScanner({
         if (cancelled) return;
         const parsed = parseMatterQr(decodedText);
         if (!parsed) return;
-        if (!continuous && decodedText === lastScanned.current) return;
+        if (decodedText === lastScanned.current) return;
         lastScanned.current = decodedText;
         onScanRef.current(parsed);
-        if (!continuous) {
-          void html5.stop().then(() => html5.clear()).catch(() => {});
-        }
+        void html5.stop().then(() => html5.clear()).catch(() => {});
       };
 
       const onFrameError = () => {
@@ -220,7 +233,7 @@ function MatterQrScanner({
         void s.stop().then(() => s.clear()).catch(() => {});
       }
     };
-  }, [phase, containerId, continuous]);
+  }, [phase, containerId]);
 
   if (phase === 'offline') {
     const insecure = typeof window !== 'undefined' && !window.isSecureContext;
@@ -293,14 +306,10 @@ function MatterQrScanner({
 export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
   const [view, setView] = useState<View>('main');
 
-  // QR scan form (view: 'scanned')
-  const [scanCode, setScanCode] = useState('');
-  const [scanName, setScanName] = useState('');
-  const [scanRoom, setScanRoom] = useState('');
-  const [scanExistingEntryId, setScanExistingEntryId] = useState<string | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const addedCount = useRef(0);
+  const [queueScanCount, setQueueScanCount] = useState(0);
+  const [scanningQueueError, setScanningQueueError] = useState<string | null>(null);
 
   // Manual code form (view: 'manual')
   const [manualCode, setManualCode] = useState('');
@@ -334,7 +343,12 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
 
   /* ── Effects ────────────────────────────────────────────────────────── */
 
-  // Start discovery on mount
+  // Start discovery on mount; reset per-session queue scan tally when the wizard opens
+  useEffect(() => {
+    setQueueScanCount(0);
+    setScanningQueueError(null);
+  }, []);
+
   useEffect(() => {
     if (scanningStarted.current) return;
     scanningStarted.current = true;
@@ -393,26 +407,19 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
     onComplete();
   }, [onComplete]);
 
-  // QR scanned → show name/room form (prefill if this code is already queued)
+  /** Decode succeeded — add to setup queue, then return to main so each device is one deliberate scan. */
   const handleQrScanned = useCallback(async (code: string) => {
-    setScanError(null);
-    setScanCode(code);
-    setScanExistingEntryId(null);
-    setScanName('');
-    setScanRoom('');
-    const key = setupPayloadIdentityKey(code);
+    setScanningQueueError(null);
     try {
-      const list = await api.get<SetupQueueEntry[]>('/setup-queue');
-      const existing = list.find((e) => setupPayloadIdentityKey(e.setup_payload) === key);
-      if (existing) {
-        setScanExistingEntryId(existing.entry_id);
-        setScanName(existing.name);
-        setScanRoom(existing.room_id ?? '');
-      }
-    } catch {
-      /* leave empty; user can still add */
+      await api.post('/setup-queue', {
+        setup_payload: code,
+        name: 'New Device',
+      });
+      setQueueScanCount((n) => n + 1);
+      setView('main');
+    } catch (err) {
+      setScanningQueueError(err instanceof Error ? err.message : 'Could not add to setup queue');
     }
-    setView('scanned');
   }, []);
 
   const lookupManualDuplicate = useCallback(async () => {
@@ -439,44 +446,13 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
 
   const openManualEntry = useCallback(() => {
     setScanError(null);
+    setScanningQueueError(null);
     setManualCode('');
     setManualName('');
     setManualRoom('');
     setManualExistingEntryId(null);
     setView('manual');
   }, []);
-
-  // Add scanned device to queue, go back to scanner
-  const handleAddScanned = useCallback(async () => {
-    if (!scanCode) return;
-    setScanBusy(true);
-    setScanError(null);
-    try {
-      if (scanExistingEntryId) {
-        await api.put(`/setup-queue/${scanExistingEntryId}`, {
-          name: (scanName.trim() || 'New Device'),
-          room_id: scanRoom || null,
-        });
-      } else {
-        await api.post('/setup-queue', {
-          setup_payload: scanCode,
-          name: scanName || 'New Device',
-          room_id: scanRoom || undefined,
-        });
-        addedCount.current++;
-      }
-      setScanCode('');
-      setScanName('');
-      setScanRoom('');
-      setScanExistingEntryId(null);
-      setScanError(null);
-      setView('scanning');
-    } catch (err) {
-      setScanError(err instanceof Error ? err.message : 'Failed to add device');
-    } finally {
-      setScanBusy(false);
-    }
-  }, [scanCode, scanName, scanRoom, scanExistingEntryId]);
 
   // Manual code → add or update queue
   const handleAddManual = useCallback(async () => {
@@ -621,7 +597,10 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
               {/* Scan button */}
               <button
                 type="button"
-                onClick={() => { addedCount.current = 0; setView('scanning'); }}
+                onClick={() => {
+                  setScanningQueueError(null);
+                  setView('scanning');
+                }}
                 className="flex w-full items-center gap-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-primary)] p-4 text-left transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-card-active)]"
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
@@ -647,6 +626,12 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
               <p className="text-center text-xs text-[var(--text-muted)]">
                 Queued codes appear on the Devices page under Setup Queue.
               </p>
+
+              {queueScanCount > 0 && (
+                <div className="rounded-xl bg-[var(--success)]/10 px-4 py-2.5 text-center text-sm font-medium text-[var(--success)]">
+                  {queueScanCount} device{queueScanCount !== 1 ? 's' : ''} added — see Setup Queue on the Devices page
+                </div>
+              )}
 
               {/* Discovered devices */}
               {discovered.length > 0 && (
@@ -707,7 +692,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
             <div className="space-y-4">
               <MatterQrScanner onScan={handleQrScanned} />
               <p className="text-center text-xs text-[var(--text-muted)]">
-                Point at the QR code on the device box
+                One code at a time — when it is captured it is added to the setup queue and you return here to scan the next box.
               </p>
               <button
                 type="button"
@@ -716,62 +701,9 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
               >
                 Enter code manually
               </button>
-              {addedCount.current > 0 && (
-                <div className="rounded-xl bg-[var(--success)]/10 px-4 py-2.5 text-center text-sm font-medium text-[var(--success)]">
-                  {addedCount.current} device{addedCount.current !== 1 ? 's' : ''} added — see Setup Queue on the Devices page
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ════ SCANNED VIEW (name/room form) ═══════════════════ */}
-          {view === 'scanned' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 rounded-xl bg-[var(--accent)]/10 p-3">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
-                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {scanExistingEntryId ? 'Already in setup queue' : 'Code scanned'}
-                  </p>
-                  <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                    {scanExistingEntryId
-                      ? 'This code is already queued. Update the name or room if you like, then save.'
-                      : 'Name this device and choose a room.'}
-                  </p>
-                  <p className="mt-1 truncate text-xs font-mono text-[var(--text-muted)]">{scanCode}</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)]">Device name</label>
-                <input
-                  type="text"
-                  value={scanName}
-                  onChange={(e) => setScanName(e.target.value)}
-                  placeholder="e.g. Kitchen Light"
-                  autoFocus
-                  className="mt-1.5 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddScanned()}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)]">Room</label>
-                <select
-                  value={scanRoom}
-                  onChange={(e) => setScanRoom(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                >
-                  <option value="">No room</option>
-                  {rooms.map((r) => <option key={r.room_id} value={r.room_id}>{r.name}</option>)}
-                </select>
-              </div>
-
-              {scanError && (
-                <div className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)]">
-                  {scanError}
+              {scanningQueueError && (
+                <div className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)]" role="alert">
+                  {scanningQueueError}
                 </div>
               )}
             </div>
@@ -1003,36 +935,10 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
           {view === 'scanning' && (
             <>
               <span className="text-xs text-[var(--text-muted)]">
-                {addedCount.current > 0 ? `${addedCount.current} added` : 'Scanning...'}
+                {queueScanCount > 0 ? `${queueScanCount} added` : 'Scanning...'}
               </span>
               <button type="button" onClick={handleDone} className="rounded-xl border border-[var(--border)] px-5 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]">
                 Done Scanning
-              </button>
-            </>
-          )}
-
-          {view === 'scanned' && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setScanExistingEntryId(null);
-                  setScanCode('');
-                  setScanName('');
-                  setScanRoom('');
-                  setView('scanning');
-                }}
-                className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={handleAddScanned}
-                disabled={scanBusy}
-                className="rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-              >
-                {scanBusy ? 'Saving…' : scanExistingEntryId ? 'Save' : 'Add to Queue'}
               </button>
             </>
           )}
