@@ -63,7 +63,10 @@ export default function SetupQueuePanel({ rooms, onWaitingCountChange }: Props) 
   const [editName, setEditName] = useState('');
   const [editRoom, setEditRoom] = useState('');
   const onWaitingRef = useRef(onWaitingCountChange);
-  onWaitingRef.current = onWaitingCountChange;
+
+  useEffect(() => {
+    onWaitingRef.current = onWaitingCountChange;
+  }, [onWaitingCountChange]);
 
   useEffect(() => {
     api.get<SetupQueueEntry[]>('/setup-queue').then(setQueue).catch(() => {});
@@ -76,21 +79,23 @@ export default function SetupQueuePanel({ rooms, onWaitingCountChange }: Props) 
 
   useEffect(() => {
     const unsub = subscribe('home/system/events', (_topic, message) => {
-      const event = message?.payload?.event as string | undefined;
-      if (!event?.startsWith('setup_queue_entry_')) return;
+      const p = message.payload;
+      const event = typeof p?.event === 'string' ? p.event : undefined;
+      if (!event?.startsWith('setup_queue_entry_') || !p) return;
 
       setQueue((prev) => {
         if (event === 'setup_queue_entry_added') {
-          const entry = message.payload as SetupQueueEntry & { event: string };
+          const entry = p as unknown as SetupQueueEntry & { event: string };
           if (prev.some((e) => e.entry_id === entry.entry_id)) return prev;
           return [...prev, entry];
         }
         if (event === 'setup_queue_entry_updated') {
-          const entry = message.payload as SetupQueueEntry & { event: string };
+          const entry = p as unknown as SetupQueueEntry & { event: string };
           return prev.map((e) => (e.entry_id === entry.entry_id ? { ...e, ...entry } : e));
         }
         if (event === 'setup_queue_entry_removed') {
-          return prev.filter((e) => e.entry_id !== message.payload.entry_id);
+          const id = p.entry_id;
+          return prev.filter((e) => e.entry_id !== id);
         }
         return prev;
       });

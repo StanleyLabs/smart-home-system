@@ -60,23 +60,35 @@ export default function App() {
     client.on('close', () => setMqttConnected(false));
 
     const unsub1 = subscribe('home/devices/+/state', (_topic, message) => {
-      if (message.type === 'state' && message.payload?.device_id) {
-        updateDeviceState(
-          message.payload.device_id,
-          message.payload.properties || {},
-        );
+      const p = message.payload;
+      if (
+        message.type === 'state'
+        && p
+        && typeof p.device_id === 'string'
+      ) {
+        const props =
+          p.properties && typeof p.properties === 'object' && !Array.isArray(p.properties)
+            ? (p.properties as Record<string, unknown>)
+            : {};
+        updateDeviceState(p.device_id, props);
       }
     });
 
     const unsub2 = subscribe('home/devices/+/availability', (_topic, message) => {
-      if (message.payload?.device_id !== undefined) {
-        setAvailability(message.payload.device_id, message.payload.online);
+      const p = message.payload;
+      if (
+        p
+        && typeof p.device_id === 'string'
+        && typeof p.online === 'boolean'
+      ) {
+        setAvailability(p.device_id, p.online);
       }
     });
 
     const unsub3 = subscribe('home/notifications/#', (_topic, message) => {
-      if (message.payload?.event === 'notification') {
-        addNotification(message.payload);
+      const p = message.payload;
+      if (p && p.event === 'notification') {
+        addNotification(p);
       }
     });
 

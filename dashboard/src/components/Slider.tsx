@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 type SliderProps = {
   value: number;
@@ -19,21 +19,21 @@ export function Slider({
   unit,
   disabled,
 }: SliderProps) {
+  const [dragging, setDragging] = useState(false);
   const [local, setLocal] = useState(value);
-  const dragging = useRef(false);
   const localRef = useRef(value);
+  /** True while pointer is down on the thumb (avoids stale state in pointer-up). */
+  const dragActiveRef = useRef(false);
 
-  useEffect(() => {
-    if (!dragging.current) {
-      setLocal(value);
-      localRef.current = value;
-    }
-  }, [value]);
+  const display = dragging ? local : value;
 
-  const pct = max > min ? ((local - min) / (max - min)) * 100 : 0;
+  const pct = max > min ? ((display - min) / (max - min)) * 100 : 0;
 
   function startDrag() {
-    dragging.current = true;
+    dragActiveRef.current = true;
+    setDragging(true);
+    setLocal(value);
+    localRef.current = value;
   }
 
   function updateValue(e: React.FormEvent<HTMLInputElement>) {
@@ -43,26 +43,27 @@ export function Slider({
   }
 
   function commitPointer() {
-    if (dragging.current) {
-      dragging.current = false;
-      onChange(localRef.current);
-    }
+    if (!dragActiveRef.current) return;
+    dragActiveRef.current = false;
+    setDragging(false);
+    onChange(localRef.current);
   }
 
   function handleKeyUp(e: React.KeyboardEvent) {
     if (
       ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)
     ) {
-      dragging.current = false;
+      dragActiveRef.current = false;
+      setDragging(false);
       onChange(localRef.current);
     }
   }
 
   function handleBlur() {
-    if (dragging.current) {
-      dragging.current = false;
-      onChange(localRef.current);
-    }
+    if (!dragActiveRef.current) return;
+    dragActiveRef.current = false;
+    setDragging(false);
+    onChange(localRef.current);
   }
 
   return (
@@ -70,7 +71,7 @@ export function Slider({
       <div className="mb-1 flex items-baseline justify-between gap-2 text-base">
         <span className="text-[var(--text-muted)]">{label ?? '\u00a0'}</span>
         <span className="tabular-nums text-[var(--text-secondary)]">
-          {local}
+          {display}
           {unit ?? ''}
         </span>
       </div>
@@ -78,7 +79,7 @@ export function Slider({
         type="range"
         min={min}
         max={max}
-        value={local}
+        value={display}
         disabled={disabled}
         onPointerDown={startDrag}
         onInput={updateValue}

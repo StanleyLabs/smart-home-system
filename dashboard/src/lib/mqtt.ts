@@ -1,7 +1,13 @@
 import mqtt from 'mqtt';
 
+/** Parsed JSON from the hub over MQTT (shape varies by topic). */
+export type MqttJsonMessage = {
+  type?: string;
+  payload?: Record<string, unknown>;
+};
+
 let client: mqtt.MqttClient | null = null;
-const listeners = new Map<string, Set<(topic: string, payload: any) => void>>();
+const listeners = new Map<string, Set<(topic: string, payload: MqttJsonMessage) => void>>();
 
 export function connectMqtt(wsUrl: string) {
   if (client) return client;
@@ -22,7 +28,7 @@ export function connectMqtt(wsUrl: string) {
 
   client.on('message', (topic, payload) => {
     try {
-      const message = JSON.parse(payload.toString());
+      const message = JSON.parse(payload.toString()) as MqttJsonMessage;
       for (const [pattern, handlers] of listeners) {
         if (topicMatches(pattern, topic)) {
           handlers.forEach((h) => h(topic, message));
@@ -43,7 +49,10 @@ export function disconnectMqtt() {
   }
 }
 
-export function subscribe(pattern: string, handler: (topic: string, payload: any) => void) {
+export function subscribe(
+  pattern: string,
+  handler: (topic: string, payload: MqttJsonMessage) => void,
+) {
   if (!listeners.has(pattern)) listeners.set(pattern, new Set());
   listeners.get(pattern)!.add(handler);
   return () => {
@@ -51,7 +60,7 @@ export function subscribe(pattern: string, handler: (topic: string, payload: any
   };
 }
 
-export function publish(topic: string, payload: any) {
+export function publish(topic: string, payload: unknown) {
   if (client?.connected) {
     client.publish(topic, JSON.stringify(payload));
   }

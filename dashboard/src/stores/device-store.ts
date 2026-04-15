@@ -1,20 +1,20 @@
 import { create } from 'zustand';
 
 interface DeviceState {
-  [property: string]: any;
+  [property: string]: unknown;
 }
 
 interface DeviceStoreState {
   states: Record<string, DeviceState>;
   availability: Record<string, boolean>;
-  notifications: any[];
+  notifications: unknown[];
   canUndo: boolean;
   canRedo: boolean;
   mqttConnected: boolean;
 
   updateDeviceState: (deviceId: string, properties: Record<string, unknown>) => void;
   setAvailability: (deviceId: string, online: boolean) => void;
-  addNotification: (notification: any) => void;
+  addNotification: (notification: unknown) => void;
   clearNotifications: () => void;
   setUndoRedo: (canUndo: boolean, canRedo: boolean) => void;
   setMqttConnected: (connected: boolean) => void;

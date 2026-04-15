@@ -338,7 +338,8 @@ export default function Automations() {
 
   const openEdit = (rule: AutomationRule) => {
     setEditingId(rule.rule_id);
-    const { rule_id: _, ...rest } = rule;
+    const { rule_id: ruleIdToOmit, ...rest } = rule;
+    void ruleIdToOmit;
     setDraft({
       ...rest,
       trigger: { ...rest.trigger },

@@ -45,9 +45,11 @@ export function Layout({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await api.get<any>('/system/status');
+        const data = await api.get<{ hub_name?: string }>('/system/status');
         if (!cancelled && data?.hub_name) setHubName(data.hub_name);
-      } catch {}
+      } catch {
+        /* hub name stays default if status unavailable */
+      }
     })();
     return () => {
       cancelled = true;

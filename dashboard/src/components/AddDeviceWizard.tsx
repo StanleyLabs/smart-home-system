@@ -254,31 +254,34 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
   // MQTT: discovery events + commissioning progress
   useEffect(() => {
     const unsub = subscribe('home/system/events', (_topic, message) => {
-      const event = message?.payload?.event as string | undefined;
-      if (!event) return;
+      const p = message.payload;
+      const event = typeof p?.event === 'string' ? p.event : undefined;
+      if (!event || !p) return;
 
       if (event === 'device_discovered') {
-        const d = message.payload as DiscoveredDevice & { event: string };
+        const d = p as unknown as DiscoveredDevice & { event: string };
         setDiscovered((prev) => {
-          if (prev.some((p) => p.temp_id === d.temp_id)) return prev;
+          if (prev.some((x) => x.temp_id === d.temp_id)) return prev;
           return [...prev, { temp_id: d.temp_id, protocol: d.protocol, device_type: d.device_type, manufacturer: d.manufacturer, model: d.model, requires_code: d.requires_code }];
         });
       }
 
       if (event === 'commissioning_progress') {
-        const status = message.payload.status as CommissioningStatus;
+        const status = p.status as CommissioningStatus;
         setCommissionStatus(status);
-        if (status === 'failed') setCommissionError(message.payload.error ?? 'Commissioning failed');
+        if (status === 'failed') {
+          setCommissionError(typeof p.error === 'string' ? p.error : 'Commissioning failed');
+        }
       }
 
       if (event === 'commissioning_complete') {
         setCommissionedDevice({
-          device_id: message.payload.device_id,
-          device_type: message.payload.device_type,
-          protocol: message.payload.protocol,
-          name: `${message.payload.manufacturer} ${message.payload.model}`,
-          manufacturer: message.payload.manufacturer,
-          model: message.payload.model,
+          device_id: String(p.device_id ?? ''),
+          device_type: String(p.device_type ?? ''),
+          protocol: String(p.protocol ?? ''),
+          name: `${String(p.manufacturer ?? '')} ${String(p.model ?? '')}`,
+          manufacturer: String(p.manufacturer ?? ''),
+          model: String(p.model ?? ''),
         });
       }
     });

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ColorPicker, hsToCss } from './ColorPicker';
+import { ColorPicker } from './ColorPicker';
+import { hsToCss } from '../lib/color-hs';
 import { Slider } from './Slider';
 import { StatusBadge } from './StatusBadge';
 import { Toggle } from './Toggle';

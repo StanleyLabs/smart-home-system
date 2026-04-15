@@ -58,7 +58,9 @@ export default function Notifications() {
   };
 
   useEffect(() => {
-    load();
+    queueMicrotask(() => {
+      load();
+    });
   }, []);
 
   const acknowledgeOne = async (id: string) => {

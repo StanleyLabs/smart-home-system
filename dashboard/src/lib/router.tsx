@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- route tree registers pages via lazy(); router export is intentional */
 import { lazy, Suspense } from 'react';
 import {
   createRootRoute,
