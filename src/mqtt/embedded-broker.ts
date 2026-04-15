@@ -1,5 +1,6 @@
 import net from "node:net";
 import http from "node:http";
+import https from "node:https";
 import type { Duplex } from "node:stream";
 import { Aedes } from "aedes";
 import websocketStream from "websocket-stream";
@@ -9,10 +10,13 @@ export type StopEmbeddedBroker = () => Promise<void>;
 /**
  * In-process MQTT broker (TCP + MQTT over WebSockets) for local/dev use.
  * Use external Mosquitto instead by setting network.mqtt.embedded_broker to false.
+ * When `tls` is set, the WebSocket server uses HTTPS so browsers loading the
+ * dashboard over HTTPS can connect with `wss://` (same PEM as the API).
  */
 export async function startEmbeddedBroker(opts: {
   tcpPort: number;
   wsPort: number;
+  tls?: { key: Buffer; cert: Buffer };
 }): Promise<StopEmbeddedBroker> {
   const broker = await Aedes.createBroker();
 
@@ -25,7 +29,9 @@ export async function startEmbeddedBroker(opts: {
     });
   });
 
-  const httpServer = http.createServer();
+  const httpServer = opts.tls
+    ? https.createServer({ key: opts.tls.key, cert: opts.tls.cert })
+    : http.createServer();
   // websocket-stream typings expect `() => void`; runtime passes (stream, req).
   websocketStream.createServer(
     { server: httpServer },
@@ -41,8 +47,9 @@ export async function startEmbeddedBroker(opts: {
     });
   });
 
+  const wsLabel = opts.tls ? "wss://…" : "ws://…";
   console.log(
-    `Embedded MQTT broker listening (TCP ${opts.tcpPort}, WebSocket ws://…:${opts.wsPort})`
+    `Embedded MQTT broker listening (TCP ${opts.tcpPort}, WebSocket ${wsLabel}:${opts.wsPort})`
   );
 
   return async () => {

@@ -11,7 +11,7 @@ import { seedMockDevices } from "./core/seed-devices.js";
 import { getPublicDashboardUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
 import { getHotspotIp, syncHttpsLanPortForwarding } from "./core/wifi-manager.js";
-import { validateHubTlsConfig } from "./core/network-tls.js";
+import { getTlsCredentials, validateHubTlsConfig } from "./core/network-tls.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "../config/system.json");
@@ -49,11 +49,17 @@ async function main() {
   const useEmbedded =
     mqttSection.embedded_broker !== false && brokerIsLocal;
 
+  const mqttWsTls =
+    settings.network.protocol === "https"
+      ? getTlsCredentials(settings.network)
+      : null;
+
   if (useEmbedded) {
     try {
       stopEmbedded = await startEmbeddedBroker({
         tcpPort: mqttSection.broker_port,
         wsPort: mqttSection.websocket_port,
+        ...(mqttWsTls ? { tls: mqttWsTls } : {}),
       });
     } catch (err) {
       const code =
