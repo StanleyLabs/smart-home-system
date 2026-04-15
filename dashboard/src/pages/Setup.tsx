@@ -42,6 +42,10 @@ function defaultTimeZone(): string {
   }
 }
 
+function scrollSetupPageTop() {
+  window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+}
+
 /** Shown as chips; filtered to zones supported by the runtime. */
 const TIMEZONE_QUICK_PICKS = [
   'UTC',
@@ -414,6 +418,10 @@ function CaptiveSetup() {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (done) scrollSetupPageTop();
+  }, [done]);
+
   function selectNetwork(ssid: string) {
     setSelectedSsid(ssid);
     setWifiPassword('');
@@ -715,6 +723,10 @@ export default function Setup() {
         ip: null, platform_supported: false, hotspot_ssid: '',
       }));
   }, []);
+
+  useEffect(() => {
+    scrollSetupPageTop();
+  }, [step]);
 
   // Still loading wifi status
   if (!wifiStatus) return null;
