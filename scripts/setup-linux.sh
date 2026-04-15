@@ -20,7 +20,7 @@ for arg in "$@"; do
 done
 
 echo "==> Installing build tools and core dependencies..."
-sudo apt-get update
+sudo apt-get update || echo "  ⚠  apt-get update had errors (stale third-party repos?). Continuing anyway..."
 sudo apt-get install -y \
   build-essential \
   python3 \
