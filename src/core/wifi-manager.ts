@@ -15,6 +15,7 @@ const DEFAULT_HOTSPOT_IP = "10.42.0.1";
 let hotspotActive = false;
 let hotspotIp = DEFAULT_HOTSPOT_IP;
 let hotspotIface: string | null = null;
+let cachedNetworks: WifiNetwork[] = [];
 
 export interface WifiNetwork {
   ssid: string;
@@ -65,8 +66,19 @@ export async function scanNetworks(): Promise<WifiNetwork[]> {
     return [];
   }
 
+  // In hotspot mode the radio can't scan; return the pre-hotspot cache
+  if (hotspotActive) {
+    console.log(`[wifi] In hotspot mode — returning ${cachedNetworks.length} cached networks`);
+    return cachedNetworks;
+  }
+
+  return doScan();
+}
+
+async function doScan(): Promise<WifiNetwork[]> {
   try {
     await run("nmcli device wifi rescan").catch(() => {});
+    await new Promise((r) => setTimeout(r, 2000));
     const output = await run("nmcli -t -f ssid,signal,security device wifi list");
     const seen = new Set<string>();
     const networks: WifiNetwork[] = [];
@@ -130,6 +142,12 @@ export async function startHotspot(): Promise<WifiResult> {
     if (!iface) {
       return { success: false, message: "No WiFi interface found" };
     }
+
+    // Scan while the radio is still in station mode so the setup wizard
+    // can show nearby networks even after we switch to AP mode.
+    console.log("[wifi] Pre-scanning networks before hotspot...");
+    cachedNetworks = await doScan();
+    console.log(`[wifi] Cached ${cachedNetworks.length} networks`);
 
     await run(`nmcli connection delete ${HOTSPOT_CON_NAME}`).catch(() => {});
 

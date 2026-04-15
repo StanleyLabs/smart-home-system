@@ -138,8 +138,29 @@ export default function Setup() {
     if (n === 4) {
       if (hostname.trim().length < 1) next.hostname = 'Enter a hostname.';
     }
+    if (n === 5 && wifiStatus?.hotspot_active && !wifiConnected) {
+      next.wifi = 'Connect to a WiFi network to continue.';
+    }
     setFieldErrors(next);
     return Object.keys(next).length === 0;
+  }
+
+  function canContinue(): boolean {
+    switch (step) {
+      case 2:
+        return username.trim().length >= 2
+          && displayName.trim().length >= 1
+          && password.length >= 12
+          && /^\d{6,}$/.test(pin);
+      case 3:
+        return hubName.trim().length >= 1 && timezone.trim().length >= 1;
+      case 4:
+        return hostname.trim().length >= 1;
+      case 5:
+        return !wifiStatus?.hotspot_active || wifiConnected;
+      default:
+        return true;
+    }
   }
 
   async function postStep(n: number) {
@@ -584,31 +605,45 @@ export default function Setup() {
                     </div>
                   )}
 
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+                      Or enter network name manually
+                    </label>
+                    <input
+                      value={selectedSsid && !wifiNetworks.find((n) => n.ssid === selectedSsid) ? selectedSsid : ''}
+                      onChange={(e) => { setSelectedSsid(e.target.value); setWifiPassword(''); }}
+                      placeholder="Network name (SSID)"
+                      className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                    />
+                  </div>
+
                   {selectedSsid && (
                     <div className="flex flex-col gap-3">
-                      {wifiNetworks.find((n) => n.ssid === selectedSsid)?.security !== 'Open' && (
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-sm font-medium text-[var(--text-secondary)]">
-                            Password for {selectedSsid}
-                          </label>
-                          <input
-                            type="password"
-                            value={wifiPassword}
-                            onChange={(e) => setWifiPassword(e.target.value)}
-                            placeholder="WiFi password"
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
-                          />
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-[var(--text-secondary)]">
+                          Password for {selectedSsid}
+                        </label>
+                        <input
+                          type="password"
+                          value={wifiPassword}
+                          onChange={(e) => setWifiPassword(e.target.value)}
+                          placeholder="WiFi password"
+                          className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => void connectWifi()}
-                        disabled={wifiConnecting}
+                        disabled={wifiConnecting || !selectedSsid.trim()}
                         className="rounded-xl bg-[var(--accent)] px-6 py-3 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
                       >
                         {wifiConnecting ? 'Connecting...' : `Connect to ${selectedSsid}`}
                       </button>
                     </div>
+                  )}
+
+                  {fieldErrors.wifi && (
+                    <p className="text-sm text-[var(--danger)]">{fieldErrors.wifi}</p>
                   )}
                 </>
               )}
@@ -825,7 +860,7 @@ export default function Setup() {
             {step < STEPS ? (
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || !canContinue()}
                 onClick={() => void goNext()}
                 className="order-1 rounded-xl bg-[var(--accent)] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:order-2 sm:ml-auto"
               >
