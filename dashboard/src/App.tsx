@@ -20,16 +20,33 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    api
-      .get<{ complete: boolean }>('/setup/status')
-      .then((res) => {
-        if (!res.complete) {
+    let cancelled = false;
+    Promise.all([
+      api.get<{ complete: boolean }>('/setup/status').catch(() => ({ complete: false })),
+      api
+        .get<{
+          hotspot_active: boolean;
+        }>('/system/wifi/status')
+        .catch(() => null),
+    ]).then(([setup, wifi]) => {
+      if (cancelled) return;
+      const token = localStorage.getItem('token');
+      if (!setup.complete) {
+        navigate({ to: '/setup', replace: true });
+      } else if (wifi?.hotspot_active) {
+        sessionStorage.setItem('postLoginRedirect', '/setup');
+        if (!token) {
+          navigate({ to: '/login', replace: true });
+        } else {
           navigate({ to: '/setup', replace: true });
         }
-        setReady(true);
-      })
-      .catch(() => setReady(true));
-  }, []);
+      }
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     if (!token) return;

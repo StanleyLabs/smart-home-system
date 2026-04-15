@@ -29,7 +29,20 @@ export default function Login() {
         : { username, password };
       const res = await api.post<LoginResponse>('/auth/login', body);
       setAuth(res.user, res.token);
-      navigate({ to: '/', replace: true });
+
+      const wifi = await api
+        .get<{ hotspot_active: boolean }>('/system/wifi/status')
+        .catch(() => null);
+      const next = sessionStorage.getItem('postLoginRedirect');
+      sessionStorage.removeItem('postLoginRedirect');
+
+      if (wifi?.hotspot_active) {
+        navigate({ to: '/setup', replace: true });
+      } else if (next === '/setup') {
+        navigate({ to: '/setup', replace: true });
+      } else {
+        navigate({ to: '/', replace: true });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sign in failed';
       setError(msg);

@@ -88,7 +88,11 @@ export function systemRoutes(engine: Engine, settings: SystemSettings) {
 
   app.get("/wifi/status", async (c) => {
     const status = await getWifiStatus();
-    return c.json({ ...status, hotspot_ssid: getHotspotSsid() });
+    return c.json({
+      ...status,
+      hotspot_ssid: getHotspotSsid(),
+      hostname: settings.network.hostname ?? null,
+    });
   });
 
   app.get("/wifi/scan", async (c) => {

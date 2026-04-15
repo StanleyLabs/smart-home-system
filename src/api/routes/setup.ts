@@ -120,10 +120,6 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
   });
 
   app.post("/captive", async (c) => {
-    if (isSetupComplete()) {
-      return c.json({ error: "Setup already complete" }, 400);
-    }
-
     const { ssid, password, hostname } = await c.req.json();
     const resolvedHostname = (hostname || "smarthome").replace(/\.local$/, "");
 
@@ -145,7 +141,11 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         console.log(`[setup] Applying hostname "${resolvedHostname}.local"...`);
         await applyHostname(`${resolvedHostname}.local`);
         await ensureGlobalPort80Redirect();
-        console.log("[setup] Network handoff complete — waiting for Phase 2 setup");
+        console.log(
+          isSetupComplete()
+            ? "[setup] Network handoff complete (WiFi recovery)"
+            : "[setup] Network handoff complete — waiting for Phase 2 setup"
+        );
       } catch (err: any) {
         console.error("[setup] Network handoff failed:", err.message);
       }

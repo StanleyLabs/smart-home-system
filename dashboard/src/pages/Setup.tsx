@@ -13,6 +13,8 @@ type WifiStatus = {
   ip: string | null;
   platform_supported: boolean;
   hotspot_ssid: string;
+  /** mDNS hostname from hub config (for captive recovery pre-fill). */
+  hostname: string | null;
 };
 function getTimeZoneOptions(): string[] {
   try {
@@ -324,7 +326,16 @@ function NetworkList({
 // Phase 1  –  Captive portal (WiFi + hostname only)
 // ---------------------------------------------------------------------------
 
-function CaptiveSetup() {
+type CaptiveVariant = 'initial' | 'recovery';
+
+function CaptiveSetup({
+  variant = 'initial',
+  initialHostname,
+}: {
+  variant?: CaptiveVariant;
+  initialHostname?: string | null;
+}) {
+  const recovery = variant === 'recovery';
   const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
   const [selectedSsid, setSelectedSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
@@ -337,6 +348,12 @@ function CaptiveSetup() {
   useEffect(() => {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (recovery && initialHostname?.trim()) {
+      setHostname(initialHostname.trim());
+    }
+  }, [recovery, initialHostname]);
 
   useEffect(() => {
     if (done) scrollSetupPageTop();
@@ -428,14 +445,26 @@ function CaptiveSetup() {
           </div>
 
           <div className="mt-8 w-full border-t border-[var(--border)] pt-8 text-left">
-            <p className="mb-3 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
+            <p className="mb-3 text-sm font-medium text-[var(--text-secondary)]">
+              {recovery ? 'To reach the dashboard:' : 'To finish setup:'}
+            </p>
             <ol className="list-decimal space-y-4 pl-5 text-[var(--text-primary)]">
               <li className="pl-1">
-                <strong>Copy the setup link below</strong> (this window may close when WiFi switches).
+                <strong>Copy the link below</strong> (this window may close when WiFi switches).
               </li>
               <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
               <li className="pl-1">
-                Paste the link into the address bar in <strong>Safari</strong> or <strong>Chrome</strong> to continue setup.
+                {recovery
+                  ? (
+                    <>
+                      Open the link in <strong>Safari</strong> or <strong>Chrome</strong> to return to the dashboard.
+                    </>
+                  )
+                  : (
+                    <>
+                      Paste the link into the address bar in <strong>Safari</strong> or <strong>Chrome</strong> to continue setup.
+                    </>
+                  )}
               </li>
             </ol>
 
@@ -469,13 +498,15 @@ function CaptiveSetup() {
     <Shell>
       <div className="mb-10 text-center sm:mb-14">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-          Welcome
+          {recovery ? 'WiFi required' : 'Welcome'}
         </p>
         <h1 className="text-4xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-5xl">
-          Connect your hub
+          {recovery ? 'Reconnect your hub' : 'Connect your hub'}
         </h1>
         <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-[var(--text-secondary)]">
-          Choose your home WiFi network so the hub can go online.
+          {recovery
+            ? 'The hub lost its network. Choose your home WiFi so it can join again.'
+            : 'Choose your home WiFi network so the hub can go online.'}
         </p>
       </div>
 
@@ -598,7 +629,7 @@ function CaptiveSetup() {
               disabled={loading || !canSubmit()}
               className="w-full rounded-xl bg-[var(--accent)] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
             >
-              {loading ? 'Please wait\u2026' : 'Connect and continue setup'}
+              {loading ? 'Please wait\u2026' : recovery ? 'Connect to WiFi' : 'Connect and continue setup'}
             </button>
           </div>
         </form>
@@ -614,7 +645,9 @@ function CaptiveSetup() {
 export default function Setup() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const token = useAuthStore((s) => s.token);
   const [wifiStatus, setWifiStatus] = useState<WifiStatus | null>(null);
+  const [setupInfo, setSetupInfo] = useState<{ complete: boolean } | null>(null);
 
   // Phase 2 state
   const [step, setStep] = useState(1);
@@ -640,19 +673,54 @@ export default function Setup() {
       .catch(() => setWifiStatus({
         connected: true, ssid: null, hotspot_active: false,
         ip: null, platform_supported: false, hotspot_ssid: '',
+        hostname: null,
       }));
   }, []);
+
+  useEffect(() => {
+    api.get<{ complete: boolean }>('/setup/status')
+      .then((r) => setSetupInfo({ complete: r.complete }))
+      .catch(() => setSetupInfo({ complete: false }));
+  }, []);
+
+  useEffect(() => {
+    if (!wifiStatus || !setupInfo) return;
+    if (wifiStatus.hotspot_active && setupInfo.complete && !token) {
+      sessionStorage.setItem('postLoginRedirect', '/setup');
+      navigate({ to: '/login', replace: true });
+    }
+  }, [wifiStatus, setupInfo, token, navigate]);
+
+  const redirectHome = setupInfo?.complete === true && wifiStatus && !wifiStatus.hotspot_active;
+  useEffect(() => {
+    if (redirectHome) {
+      navigate({ to: '/', replace: true });
+    }
+  }, [redirectHome, navigate]);
 
   useEffect(() => {
     scrollSetupPageTop();
   }, [step]);
 
-  // Still loading wifi status
-  if (!wifiStatus) return null;
+  // Still loading wifi / setup flags
+  if (!wifiStatus || !setupInfo) return null;
 
-  // Phase 1: captive portal mode
+  if (redirectHome) {
+    return null;
+  }
+
+  // Captive portal — hub hotspot (lost WiFi or first-time setup)
   if (wifiStatus.hotspot_active) {
-    return <CaptiveSetup />;
+    if (setupInfo.complete) {
+      if (!token) return null;
+      return (
+        <CaptiveSetup
+          variant="recovery"
+          initialHostname={wifiStatus.hostname}
+        />
+      );
+    }
+    return <CaptiveSetup variant="initial" />;
   }
 
   // -- Phase 2 helpers -------------------------------------------------------
