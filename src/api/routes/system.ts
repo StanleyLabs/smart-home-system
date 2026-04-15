@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import { Hono } from "hono";
 import type { Engine } from "../../core/engine.js";
-import type { SystemSettings } from "../../types.js";
+import { getBaseUrl, type SystemSettings } from "../../types.js";
 import { requireRole } from "../auth.js";
 import {
   scanNetworks,
@@ -92,6 +92,7 @@ export function systemRoutes(engine: Engine, settings: SystemSettings) {
       ...status,
       hotspot_ssid: getHotspotSsid(),
       hostname: settings.network.hostname ?? null,
+      public_base_url: getBaseUrl(settings.network),
     });
   });
 

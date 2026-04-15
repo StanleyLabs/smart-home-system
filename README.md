@@ -16,6 +16,28 @@ The hub starts on **http://localhost:3000**. On first launch, you'll be guided t
 
 > **Production (Linux):** The setup script adds an iptables redirect from port 80 to 3000 so the hub is reachable at a clean URL like `http://home.local`.
 
+### HTTPS on the LAN
+
+Mobile browsers only expose the camera on a **secure context** (HTTPS or `localhost`). On Ubuntu / Debian, after `./scripts/setup-linux.sh` you can enable TLS in one step:
+
+```bash
+./scripts/setup-https-linux.sh
+```
+
+This script:
+
+- Creates `certs/hub.pem` and `certs/hub.key` (self-signed; SAN includes your `network.hostname` from `config/system.json` plus `localhost`).
+- Sets `network.protocol` to `https`, `network.tls`, keeps the hub on **port 3000** by default, and sets **`network.public_url_port` to 443** so dashboard URLs show `https://hostname/` while Node still listens on 3000.
+- Adds and persists an iptables rule **443 → 3000** (same idea as the existing **80 → 3000** rule).
+
+Options: `--force` (replace existing certs), `--no-iptables`, `--dry-run`, `--api-port 443` (only if Node can bind to 443). Run `./scripts/setup-https-linux.sh --help` for details.
+
+**Manual setup:** Put your own PEM files under e.g. `certs/`, set `network.protocol`, `network.tls.cert_path`, `network.tls.key_path`, and optionally `network.public_url_port` if you use port mapping. Restart the hub and trust the cert on each phone (or use your own CA).
+
+Binding directly to port **443** in Node requires elevated privileges (`setcap 'cap_net_bind_service=+ep' $(which node)`) or a reverse proxy; the default script avoids that by using 3000 + NAT.
+
+The captive hotspot UI stays on HTTP; after the hub joins your WiFi, use the **https://** URL from setup (and `public_base_url` in `GET /api/system/wifi/status`).
+
 ## Architecture
 
 - **Core Engine** — Device registry, state manager, automation engine, scene manager, undo/redo system, notification system
@@ -108,7 +130,7 @@ That's it. The setup script configures sudoers, iptables, captive portal DNS, an
 | `build-essential`, `python3` | Compile native npm modules (`bcrypt`, `better-sqlite3`) |
 | `avahi-daemon`, `avahi-utils`, `libnss-mdns` | mDNS discovery for Matter devices |
 | `wireless-tools`, `network-manager` | WiFi onboarding hotspot, scanning, and connection (`nmcli`) |
-| `iptables-persistent` | Persist port 80 → 3000 redirect across reboots |
+| `iptables-persistent` | Persist port 80 → 3000 (and 443 → api_port when HTTPS is enabled) across reboots |
 | `bluetooth`, `bluez`, `libbluetooth-dev` | BLE commissioning (optional, use `--ble`) |
 | Node.js 20+ | Runtime (installed via NodeSource if missing) |
 
@@ -118,7 +140,7 @@ The hub process never runs as root. A narrowly scoped sudoers file (installed by
 
 | Command | Purpose |
 |---------|---------|
-| `iptables` | Toggle port 80 → 3000 redirect for captive portal |
+| `iptables` | Port 80 → 3000 for captive portal; 443 → api_port when HTTPS is configured |
 | `scripts/set-hostname.sh` | Apply mDNS hostname changes |
 | `scripts/install-captive-conf.sh` | Install captive portal DNS config |
 

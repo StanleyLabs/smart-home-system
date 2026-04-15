@@ -220,9 +220,10 @@ function MatterQrScanner({
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
               Mobile browsers only allow the camera on a <strong>secure</strong> page (HTTPS, or{' '}
               <code className="rounded bg-[var(--bg-card-active)] px-1 font-mono text-xs">localhost</code>
-              ). Opening the hub as plain{' '}
-              <code className="rounded bg-[var(--bg-card-active)] px-1 font-mono text-xs">http://192.168…</code>{' '}
-              blocks camera access — that is a browser rule, not something the app can disable.
+              ). A plain{' '}
+              <code className="rounded bg-[var(--bg-card-active)] px-1 font-mono text-xs">http://</code>{' '}
+              URL to a LAN hostname or IP is not a secure context, so the camera is blocked — configure the hub for HTTPS
+              (see hub docs) or upload a photo of the QR code below.
             </p>
           ) : (
             <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -250,7 +251,7 @@ function MatterQrScanner({
               <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" />
             </svg>
             <span className="text-sm font-medium text-[var(--accent)]">Choose image with QR code</span>
-            <span className="text-center text-xs text-[var(--text-muted)]">Gallery or photo — works without HTTPS</span>
+            <span className="text-center text-xs text-[var(--text-muted)]">Gallery or photo — works on plain HTTP</span>
           </label>
           {fileError && (
             <p className="mt-3 text-center text-sm text-[var(--danger)]" role="alert">

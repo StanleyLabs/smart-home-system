@@ -11,6 +11,7 @@ import { seedMockDevices } from "./core/seed-devices.js";
 import { getBaseUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
 import { getHotspotIp } from "./core/wifi-manager.js";
+import { validateHubTlsConfig } from "./core/network-tls.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "../config/system.json");
@@ -76,6 +77,7 @@ async function main() {
   const mqtt = new MqttBridge(engine, settings);
   await mqtt.connect();
 
+  validateHubTlsConfig(settings.network);
   startServer(engine, settings);
 
   console.log("Smart Home Hub is running");

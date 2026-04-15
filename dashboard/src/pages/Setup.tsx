@@ -15,6 +15,8 @@ type WifiStatus = {
   hotspot_ssid: string;
   /** mDNS hostname from hub config (for captive recovery pre-fill). */
   hostname: string | null;
+  /** Canonical dashboard URL from hub config (respects HTTPS and port). */
+  public_base_url: string;
 };
 function getTimeZoneOptions(): string[] {
   try {
@@ -344,6 +346,7 @@ function CaptiveSetup({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [finishUrl, setFinishUrl] = useState('');
   const [urlCopied, setUrlCopied] = useState(false);
   useEffect(() => {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
@@ -379,6 +382,15 @@ function CaptiveSetup({
         password: wifiPassword || undefined,
         hostname: hostname.trim(),
       });
+      const resolved = hostname.trim().replace(/\.local$/, '') + '.local';
+      let url = `http://${resolved}/`;
+      try {
+        const st = await api.get<WifiStatus>('/system/wifi/status');
+        if (st.public_base_url) url = st.public_base_url;
+      } catch {
+        /* keep HTTP fallback */
+      }
+      setFinishUrl(url);
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.');
@@ -387,18 +399,16 @@ function CaptiveSetup({
     }
   }
 
-  const resolvedHostname = hostname.trim().replace(/\.local$/, '') + '.local';
-  const setupUrl = `http://${resolvedHostname}/`;
-
   async function copySetupUrl() {
+    if (!finishUrl) return;
     try {
-      await navigator.clipboard.writeText(setupUrl);
+      await navigator.clipboard.writeText(finishUrl);
       setUrlCopied(true);
       window.setTimeout(() => setUrlCopied(false), 2500);
     } catch {
       try {
         const ta = document.createElement('textarea');
-        ta.value = setupUrl;
+        ta.value = finishUrl;
         ta.setAttribute('readonly', '');
         ta.style.position = 'fixed';
         ta.style.left = '-9999px';
@@ -474,9 +484,9 @@ function CaptiveSetup({
             <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] py-1 text-center">
               <span
                 className="inline-block cursor-text select-all whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)]"
-                title={setupUrl}
+                title={finishUrl}
               >
-                {setupUrl}
+                {finishUrl}
               </span>
             </div>
             <div className="mt-3 flex justify-center">
@@ -674,6 +684,7 @@ export default function Setup() {
         connected: true, ssid: null, hotspot_active: false,
         ip: null, platform_supported: false, hotspot_ssid: '',
         hostname: null,
+        public_base_url: typeof window !== 'undefined' ? `${window.location.origin}/` : 'http://localhost/',
       }));
   }, []);
 

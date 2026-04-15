@@ -3,9 +3,11 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import fs from "fs";
+import { createServer as createHttpsServer } from "node:https";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
+import { getTlsCredentials } from "../core/network-tls.js";
 import { getBaseUrl, type SystemSettings } from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
 import { isHotspotMode, getHotspotIp } from "../core/wifi-manager.js";
@@ -125,10 +127,17 @@ export function startServer(
 ): ReturnType<typeof serve> {
   const app = createServer(engine, settings);
   const port = settings.network.api_port;
+  const tls = getTlsCredentials(settings.network);
 
   const server = serve({
     fetch: app.fetch,
     port,
+    ...(tls
+      ? {
+          createServer: createHttpsServer,
+          serverOptions: tls,
+        }
+      : {}),
   });
 
   server.on("error", (err: NodeJS.ErrnoException) => {

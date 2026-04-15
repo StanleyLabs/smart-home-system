@@ -355,6 +355,24 @@ export async function ensureGlobalPort80Redirect(): Promise<void> {
   await ensureCaptivePortalRedirect(undefined);
 }
 
+/** Same pattern as port 80: external 443 → hub api_port when TLS terminates on the Node server. */
+export async function ensureGlobalPort443Redirect(apiPort: number): Promise<void> {
+  if (apiPort === 443) {
+    console.log("[wifi] Hub listens on 443; skipping 443→api_port NAT rule");
+    return;
+  }
+  try {
+    const rule = `-p tcp --dport 443 -j REDIRECT --to-port ${apiPort}`;
+    await run(
+      `sudo iptables -t nat -C PREROUTING ${rule} 2>/dev/null` +
+        ` || sudo iptables -t nat -A PREROUTING ${rule}`
+    );
+    console.log(`[wifi] Port 443 → ${apiPort} redirect active`);
+  } catch (err: any) {
+    console.warn("[wifi] Could not set up HTTPS port redirect:", err.message);
+  }
+}
+
 async function removeCaptivePortalRedirect(): Promise<void> {
   // Only remove the interface-specific rule that startHotspot() added.
   // The global rule (no -i flag) is installed by setup-linux.sh /

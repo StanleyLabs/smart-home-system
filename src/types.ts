@@ -266,6 +266,16 @@ export interface SystemSettings {
     hostname: string;
     api_port: number;
     protocol: string;
+    /** PEM paths for HTTPS when protocol is "https" (paths relative to project root or absolute). */
+    tls?: {
+      cert_path: string;
+      key_path: string;
+    };
+    /**
+     * If set, used for dashboard/API “public” URLs instead of api_port (e.g. 443 when Node listens on
+     * 3000 and iptables maps 443 → 3000).
+     */
+    public_url_port?: number;
     mqtt: {
       broker_host: string;
       broker_port: number;
@@ -325,8 +335,9 @@ export const SYSTEM_GROUPS: Record<string, { name: string; device_types: DeviceT
 
 export function getBaseUrl(network: SystemSettings["network"]): string {
   const { protocol, hostname, api_port } = network;
+  const port = network.public_url_port ?? api_port;
   const isDefaultPort =
-    (protocol === "http" && api_port === 80) ||
-    (protocol === "https" && api_port === 443);
-  return `${protocol}://${hostname}${isDefaultPort ? "" : `:${api_port}`}`;
+    (protocol === "http" && port === 80) ||
+    (protocol === "https" && port === 443);
+  return `${protocol}://${hostname}${isDefaultPort ? "" : `:${port}`}`;
 }

@@ -5,9 +5,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getDb } from "../../db/database.js";
 import type { Engine } from "../../core/engine.js";
-import type { SystemSettings } from "../../types.js";
+import { getBaseUrl, type SystemSettings } from "../../types.js";
 import { applyHostname } from "../../core/hostname.js";
-import { connectToWifi, ensureGlobalPort80Redirect } from "../../core/wifi-manager.js";
+import {
+  connectToWifi,
+  ensureGlobalPort443Redirect,
+  ensureGlobalPort80Redirect,
+} from "../../core/wifi-manager.js";
 import {
   hashPassword,
   hashPin,
@@ -141,6 +145,9 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         console.log(`[setup] Applying hostname "${resolvedHostname}.local"...`);
         await applyHostname(`${resolvedHostname}.local`);
         await ensureGlobalPort80Redirect();
+        if (settings.network.protocol === "https") {
+          await ensureGlobalPort443Redirect(settings.network.api_port);
+        }
         console.log(
           isSetupComplete()
             ? "[setup] Network handoff complete (WiFi recovery)"
@@ -154,7 +161,7 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
     return c.json({
       success: true,
       hostname: `${resolvedHostname}.local`,
-      message: `Hub will connect to "${ssid}" and be available at http://${resolvedHostname}.local`,
+      message: `Hub will connect to "${ssid}" and be available at ${getBaseUrl(settings.network)}`,
     });
   });
 
