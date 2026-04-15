@@ -103,6 +103,34 @@ async function doScan(): Promise<WifiNetwork[]> {
   }
 }
 
+/**
+ * Keeps `hotspotActive` / `hotspotIface` in sync with NetworkManager.
+ * After `nmcli device wifi connect`, NM may drop the AP before `stopHotspot`
+ * finishes; a partial stop left `hotspotActive === true` while the hub was
+ * already on LAN WiFi — the HTTP layer still thought captive mode was on and
+ * could redirect browsers to the old hotspot IP (unreachable from home Wi‑Fi).
+ */
+async function refreshHotspotFlagsFromNmcli(): Promise<void> {
+  if (process.platform !== "linux") {
+    hotspotActive = false;
+    hotspotIface = null;
+    return;
+  }
+  try {
+    const st = await getStatus();
+    const before = hotspotActive;
+    hotspotActive = st.hotspot_active;
+    if (!st.hotspot_active) {
+      hotspotIface = null;
+    }
+    if (before !== hotspotActive) {
+      console.log(`[wifi] Hotspot state synced from NM (hotspot_active=${hotspotActive})`);
+    }
+  } catch (err: any) {
+    console.warn("[wifi] Could not sync hotspot flags from NM:", err?.message);
+  }
+}
+
 export async function connectToWifi(ssid: string, password?: string): Promise<WifiResult> {
   if (process.platform !== "linux") {
     notLinux("connect");
@@ -117,7 +145,10 @@ export async function connectToWifi(ssid: string, password?: string): Promise<Wi
       : `nmcli device wifi connect "${ssid}"${ifPart}`;
     await run(cmd);
 
-    await stopHotspot().catch(() => {});
+    await stopHotspot().catch((e) => {
+      console.warn("[wifi] stopHotspot after connect:", (e as Error)?.message ?? e);
+    });
+    await refreshHotspotFlagsFromNmcli();
 
     return { success: true, message: `Connected to ${ssid}` };
   } catch (err: any) {
@@ -207,6 +238,7 @@ export async function stopHotspot(): Promise<WifiResult> {
     console.log("[wifi] Hotspot stopped");
     return { success: true, message: "Hotspot stopped" };
   } catch (err: any) {
+    await refreshHotspotFlagsFromNmcli();
     return { success: false, message: err.message };
   }
 }
