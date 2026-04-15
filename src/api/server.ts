@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
 import { getBaseUrl, type SystemSettings } from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
-import { isHotspotMode } from "../core/wifi-manager.js";
+import { isHotspotMode, getHotspotIp } from "../core/wifi-manager.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { roomRoutes } from "./routes/rooms.js";
 import { groupRoutes } from "./routes/groups.js";
@@ -44,8 +44,10 @@ export function createServer(engine: Engine, settings: SystemSettings) {
   app.use("*", async (c, next) => {
     if (!isHotspotMode()) return next();
 
+    const portalUrl = `http://${getHotspotIp()}/`;
+
     if (CAPTIVE_PORTAL_PATHS.has(c.req.path)) {
-      return c.redirect("/", 302);
+      return c.redirect(portalUrl, 302);
     }
 
     const host = c.req.header("host") || "";
@@ -55,7 +57,7 @@ export function createServer(engine: Engine, settings: SystemSettings) {
       host.startsWith("10.42.0.") ||
       host.startsWith("192.168.");
     if (!isLocal && host && !host.includes(".local")) {
-      return c.redirect("/", 302);
+      return c.redirect(portalUrl, 302);
     }
 
     return next();
