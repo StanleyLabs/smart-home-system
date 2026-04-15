@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import fs from "fs";
+import type { Server as HttpServer } from "node:http";
+import type { Server as HttpsServer } from "node:https";
 import { createServer as createHttpsServer } from "node:https";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -139,7 +141,14 @@ function bindListenError(port: number, label: string) {
   };
 }
 
-export function startServer(engine: Engine, settings: SystemSettings): void {
+export function startServer(
+  engine: Engine,
+  settings: SystemSettings,
+  opts?: {
+    /** Embedded broker: MQTT over WebSocket on the same port(s) as the dashboard. */
+    attachMqttWebSocket?: (server: HttpServer | HttpsServer) => void;
+  }
+): void {
   const app = createServer(engine, settings);
   const httpPort = settings.network.api_port;
   const tls = getTlsCredentials(settings.network);
@@ -147,6 +156,7 @@ export function startServer(engine: Engine, settings: SystemSettings): void {
   /** Plain HTTP on api_port: captive portal (80→port) and optional direct http:// access. */
   const httpServer = serve({ fetch: app.fetch, port: httpPort });
   httpServer.on("error", bindListenError(httpPort, "HTTP"));
+  opts?.attachMqttWebSocket?.(httpServer as HttpServer);
 
   if (tls) {
     const tlsPort = getHttpsListenPort(settings.network);
@@ -157,6 +167,7 @@ export function startServer(engine: Engine, settings: SystemSettings): void {
       serverOptions: tls,
     });
     httpsServer.on("error", bindListenError(tlsPort, "HTTPS"));
+    opts?.attachMqttWebSocket?.(httpsServer as HttpsServer);
     console.log(
       `[api] HTTPS listener on port ${tlsPort} (iptables: 443 → ${tlsPort} when using NAT)`
     );

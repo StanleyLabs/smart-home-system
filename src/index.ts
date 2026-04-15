@@ -3,7 +3,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Engine } from "./core/engine.js";
 import { MqttBridge } from "./mqtt/bridge.js";
-import { startEmbeddedBroker } from "./mqtt/embedded-broker.js";
+import {
+  startEmbeddedBroker,
+  type AttachMqttWebSocket,
+} from "./mqtt/embedded-broker.js";
 import { startServer } from "./api/server.js";
 import { MatterAdapter } from "./adapters/matter-adapter.js";
 import { closeDb } from "./db/database.js";
@@ -11,7 +14,7 @@ import { seedMockDevices } from "./core/seed-devices.js";
 import { getPublicDashboardUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
 import { getHotspotIp, syncHttpsLanPortForwarding } from "./core/wifi-manager.js";
-import { getTlsCredentials, validateHubTlsConfig } from "./core/network-tls.js";
+import { validateHubTlsConfig } from "./core/network-tls.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "../config/system.json");
@@ -42,6 +45,7 @@ async function main() {
   seedMockDevices(engine);
 
   let stopEmbedded: (() => Promise<void>) | undefined;
+  let attachMqttWebSocket: AttachMqttWebSocket | undefined;
   const mqttSection = settings.network.mqtt;
   const brokerIsLocal =
     mqttSection.broker_host === "localhost" ||
@@ -49,18 +53,13 @@ async function main() {
   const useEmbedded =
     mqttSection.embedded_broker !== false && brokerIsLocal;
 
-  const mqttWsTls =
-    settings.network.protocol === "https"
-      ? getTlsCredentials(settings.network)
-      : null;
-
   if (useEmbedded) {
     try {
-      stopEmbedded = await startEmbeddedBroker({
+      const embedded = await startEmbeddedBroker({
         tcpPort: mqttSection.broker_port,
-        wsPort: mqttSection.websocket_port,
-        ...(mqttWsTls ? { tls: mqttWsTls } : {}),
       });
+      stopEmbedded = embedded.stop;
+      attachMqttWebSocket = embedded.attachMqttWebSocket;
     } catch (err) {
       const code =
         err && typeof err === "object" && "code" in err
@@ -71,10 +70,8 @@ async function main() {
         err
       );
       console.error(
-        "Set network.mqtt.embedded_broker to false in config/system.json if you run Mosquitto (or another broker) yourself, or free ports",
-        mqttSection.broker_port,
-        "and",
-        mqttSection.websocket_port
+        "Set network.mqtt.embedded_broker to false in config/system.json if you run Mosquitto (or another broker) yourself, or free TCP port",
+        mqttSection.broker_port
       );
       process.exit(1);
     }
@@ -85,7 +82,9 @@ async function main() {
 
   validateHubTlsConfig(settings.network);
   await syncHttpsLanPortForwarding(settings.network);
-  startServer(engine, settings);
+  startServer(engine, settings, {
+    attachMqttWebSocket,
+  });
 
   console.log("Smart Home Hub is running");
   if (hotspotStarted) {

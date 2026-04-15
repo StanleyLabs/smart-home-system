@@ -51,10 +51,13 @@ export default function App() {
   useEffect(() => {
     if (!token) return;
 
-    const wsPort = 9001;
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsHost = window.location.hostname;
-    const client = connectMqtt(`${wsProtocol}://${wsHost}:${wsPort}`);
+    const wsPort = window.location.port;
+    const mqttWsUrl = wsPort
+      ? `${wsProtocol}://${wsHost}:${wsPort}`
+      : `${wsProtocol}://${wsHost}`;
+    const client = connectMqtt(mqttWsUrl);
 
     client.on('connect', () => setMqttConnected(true));
     client.on('close', () => setMqttConnected(false));

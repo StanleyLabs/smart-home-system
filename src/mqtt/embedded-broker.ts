@@ -1,23 +1,24 @@
+import type { IncomingMessage, Server as HttpServer } from "node:http";
+import type { Server as HttpsServer } from "node:https";
 import net from "node:net";
-import http from "node:http";
-import https from "node:https";
 import type { Duplex } from "node:stream";
 import { Aedes } from "aedes";
+import type { WebSocketServer } from "ws";
 import websocketStream from "websocket-stream";
 
 export type StopEmbeddedBroker = () => Promise<void>;
 
+export type AttachMqttWebSocket = (server: HttpServer | HttpsServer) => void;
+
 /**
  * In-process MQTT broker (TCP + MQTT over WebSockets) for local/dev use.
- * Use external Mosquitto instead by setting network.mqtt.embedded_broker to false.
- * When `tls` is set, the WebSocket server uses HTTPS so browsers loading the
- * dashboard over HTTPS can connect with `wss://` (same PEM as the API).
+ * WebSocket MQTT is attached to the same HTTP/HTTPS server(s) as the dashboard API so browsers
+ * reuse the same TLS context and port (e.g. 443/3001) — a separate `wss://…:9001` often fails with
+ * self-signed certs or firewalls that only allow 443.
  */
 export async function startEmbeddedBroker(opts: {
   tcpPort: number;
-  wsPort: number;
-  tls?: { key: Buffer; cert: Buffer };
-}): Promise<StopEmbeddedBroker> {
+}): Promise<{ stop: StopEmbeddedBroker; attachMqttWebSocket: AttachMqttWebSocket }> {
   const broker = await Aedes.createBroker();
 
   const tcpServer = net.createServer(broker.handle);
@@ -29,38 +30,38 @@ export async function startEmbeddedBroker(opts: {
     });
   });
 
-  const httpServer = opts.tls
-    ? https.createServer({ key: opts.tls.key, cert: opts.tls.cert })
-    : http.createServer();
-  // websocket-stream typings expect `() => void`; runtime passes (stream, req).
-  websocketStream.createServer(
-    { server: httpServer },
-    ((stream: Duplex, req: http.IncomingMessage) => {
-      broker.handle(stream, req);
-    }) as () => void
-  );
-  await new Promise<void>((resolve, reject) => {
-    httpServer.once("error", reject);
-    httpServer.listen(opts.wsPort, () => {
-      httpServer.off("error", reject);
-      resolve();
-    });
-  });
+  const wsServers: WebSocketServer[] = [];
 
-  const wsLabel = opts.tls ? "wss://…" : "ws://…";
+  const attachMqttWebSocket: AttachMqttWebSocket = (server) => {
+    const wss = websocketStream.createServer(
+      { server },
+      ((stream: Duplex, req: IncomingMessage) => {
+        broker.handle(stream, req);
+      }) as () => void
+    );
+    wsServers.push(wss as unknown as WebSocketServer);
+  };
+
   console.log(
-    `Embedded MQTT broker listening (TCP ${opts.tcpPort}, WebSocket ${wsLabel}:${opts.wsPort})`
+    `Embedded MQTT broker listening (TCP ${opts.tcpPort}; WebSocket on dashboard HTTP/HTTPS port(s))`
   );
 
-  return async () => {
+  const stop: StopEmbeddedBroker = async () => {
     await new Promise<void>((resolve) => {
       broker.close(() => resolve());
     });
     await new Promise<void>((resolve, reject) => {
       tcpServer.close((err) => (err ? reject(err) : resolve()));
     });
-    await new Promise<void>((resolve, reject) => {
-      httpServer.close((err) => (err ? reject(err) : resolve()));
-    });
+    await Promise.all(
+      wsServers.map(
+        (wss) =>
+          new Promise<void>((resolve, reject) => {
+            wss.close((err?: Error) => (err ? reject(err) : resolve()));
+          })
+      )
+    );
   };
+
+  return { stop, attachMqttWebSocket };
 }
