@@ -187,10 +187,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     disabled={!canUndo}
-                    onClick={() => {
-                      handleUndo();
-                      setUserMenuOpen(false);
-                    }}
+                    onClick={handleUndo}
                     className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Undo
@@ -198,10 +195,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     disabled={!canRedo}
-                    onClick={() => {
-                      handleRedo();
-                      setUserMenuOpen(false);
-                    }}
+                    onClick={handleRedo}
                     className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Redo

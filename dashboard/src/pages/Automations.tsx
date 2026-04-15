@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { PencilIcon, TrashIcon } from '../components/action-icons';
 import { Toggle } from '../components/Toggle';
 import { Slider } from '../components/Slider';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type Modifier } from '@dnd-kit/core';
@@ -201,7 +202,7 @@ function ValueControl({ def, value, onChange }: {
   if (def.control === 'toggle') {
     return (
       <div className="flex items-center gap-3">
-        <span className="text-sm text-[var(--text-secondary)]">{value ? 'On' : 'Off'}</span>
+        <span className="text-base text-[var(--text-secondary)]">{value ? 'On' : 'Off'}</span>
         <Toggle checked={!!value} onChange={(c) => onChange(c)} />
       </div>
     );
@@ -227,9 +228,9 @@ function ValueControl({ def, value, onChange }: {
           max={def.max}
           value={value == null ? '' : Number(value)}
           onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)]"
+          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
         />
-        {def.unit && <span className="text-sm text-[var(--text-secondary)]">{def.unit}</span>}
+        {def.unit && <span className="text-base text-[var(--text-secondary)]">{def.unit}</span>}
       </div>
     );
   }
@@ -254,10 +255,12 @@ function ValueControl({ def, value, onChange }: {
 // Shared style constants
 // ---------------------------------------------------------------------------
 
-const inputCls = 'mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)]';
+const inputCls =
+  'mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]';
 const selectCls = inputCls + ' select-chevron';
-const cardCls = 'rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4';
-const pillBtnCls = 'rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors';
+const cardCls = 'rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4';
+const pillBtnCls =
+  'rounded-lg border border-[var(--border)] px-3 py-1.5 text-base font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-active)]';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -470,9 +473,14 @@ export default function Automations() {
   // -- Render ---------------------------------------------------------------
 
   return (
-    <div className="min-h-full p-6 text-[var(--text-primary)]">
+    <div className="min-h-full bg-[var(--bg-primary)] p-4 md:p-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Automations</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Automations</h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {loading ? 'Loading…' : `${rules.length} automation${rules.length === 1 ? '' : 's'}`}
+          </p>
+        </div>
         <button
           type="button"
           onClick={openCreate}
@@ -483,30 +491,53 @@ export default function Automations() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
+        <div className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
           {error}
-        </p>
-      )}
-
-      {loading && <p className="text-[var(--text-secondary)]">Loading...</p>}
-
-      {!loading && rules.length === 0 && (
-        <div className="rounded-xl border border-dashed border-[var(--border)] p-8 text-center text-[var(--text-secondary)]">
-          <p className="text-lg font-medium">No automations yet</p>
-          <p className="mt-1 text-sm">Create your first automation to make your home work for you.</p>
         </div>
       )}
 
-      {!loading && (
-        <div className="space-y-3">
-          {rules.map((r) => (
+      {!loading && rules.length === 0 && (
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+          <div className="px-4 py-8 text-center text-sm text-[var(--text-muted)]">
+            <p className="font-medium text-[var(--text-primary)]">No automations yet</p>
+            <p className="mt-1">Create your first automation to make your home work for you.</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && rules.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+          {rules.map((r, i) => (
             <div
               key={r.rule_id}
-              className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:flex-row sm:items-center sm:justify-between"
+              className={[
+                'relative border-b border-[var(--border)] px-4 py-3',
+                i === rules.length - 1 ? 'border-b-0' : '',
+              ].join(' ')}
             >
-              <div className="min-w-0 flex-1">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 sm:right-3 sm:top-2.5">
+                <button
+                  type="button"
+                  onClick={() => openEdit(r)}
+                  title="Edit automation"
+                  className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
+                >
+                  <PencilIcon />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteRule(r.rule_id)}
+                  title="Delete automation"
+                  className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+              <div className="min-w-0 pr-14 sm:pr-16">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{r.name || '(unnamed)'}</span>
+                  <span className="text-sm font-medium text-[var(--text-primary)]">
+                    {r.name || '(unnamed)'}
+                  </span>
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
@@ -520,22 +551,6 @@ export default function Automations() {
                   {triggerSummary(r.trigger as Record<string, unknown>, devices)}
                 </p>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  type="button"
-                  onClick={() => openEdit(r)}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-1.5 text-sm hover:bg-[var(--bg-card-active)]"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteRule(r.rule_id)}
-                  className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--danger)] hover:bg-[var(--bg-card-active)]"
-                >
-                  Delete
-                </button>
-              </div>
             </div>
           ))}
         </div>
@@ -546,17 +561,17 @@ export default function Automations() {
       {/* ================================================================= */}
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex min-h-full justify-center overflow-y-auto bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="mx-auto my-8 w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl">
-            <h2 className="text-lg font-semibold">
+          <div className="my-8 w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
               {editingId ? 'Edit Automation' : 'New Automation'}
             </h2>
 
             {/* Name */}
-            <label className="mt-4 block text-sm font-medium text-[var(--text-secondary)]">
+            <label className="mt-4 block text-base font-medium text-[var(--text-secondary)]">
               Name
               <input
                 value={draft.name}
@@ -570,7 +585,7 @@ export default function Automations() {
             {/* WHEN (Trigger)                                                 */}
             {/* ============================================================= */}
             <section className="mt-6">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">When this happens...</h3>
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">When this happens...</h3>
               <select
                 value={tt === 'schedule' || tt === 'device_state' ? tt : 'device_state'}
                 onChange={(e) => setTriggerType(e.target.value as TriggerType)}
@@ -583,7 +598,7 @@ export default function Automations() {
               {/* Trigger: device_state */}
               {tt === 'device_state' && (
                 <div className={'mt-3 ' + cardCls}>
-                  <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                  <label className="block text-base font-medium text-[var(--text-secondary)]">
                     Device
                     <select
                       value={String(draft.trigger.device_id ?? '')}
@@ -611,7 +626,7 @@ export default function Automations() {
                     const selectedProp = props.find((p) => p.key === draft.trigger.property);
                     return (
                       <>
-                        <label className="mt-3 block text-sm font-medium text-[var(--text-secondary)]">
+                        <label className="mt-3 block text-base font-medium text-[var(--text-secondary)]">
                           Property
                           {props.length > 0 ? (
                             <select
@@ -640,7 +655,7 @@ export default function Automations() {
                         </label>
 
                         <div className="mt-3">
-                          <span className="block text-sm font-medium text-[var(--text-secondary)]">Changes to</span>
+                          <span className="block text-base font-medium text-[var(--text-secondary)]">Changes to</span>
                           <div className="mt-1">
                             {selectedProp ? (
                               <ValueControl
@@ -683,7 +698,7 @@ export default function Automations() {
             {/* ============================================================= */}
             <section className="mt-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">Only if...</h3>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">Only if...</h3>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => addCondition('time_range')} className={pillBtnCls}>
                     + Time window
@@ -695,12 +710,12 @@ export default function Automations() {
               </div>
 
               {draft.conditions.length > 0 && (
-                <div className="mt-2 flex items-center gap-2 text-sm">
+                <div className="mt-2 flex items-center gap-2 text-base">
                   <span className="text-[var(--text-muted)]">Match</span>
                   <select
                     value={draft.condition_logic}
                     onChange={(e) => setDraft((d) => ({ ...d, condition_logic: e.target.value as 'all' | 'any' }))}
-                    className="select-chevron rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                    className="select-chevron rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2 py-1.5 text-base text-[var(--text-primary)]"
                   >
                     <option value="all">all conditions</option>
                     <option value="any">any condition</option>
@@ -712,13 +727,13 @@ export default function Automations() {
                 {draft.conditions.map((c, i) => (
                   <div key={i} className={cardCls}>
                     <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                         {c.type === 'time_range' ? 'Time window' : 'Device is...'}
                       </p>
                       <button
                         type="button"
                         onClick={() => removeCondition(i)}
-                        className="text-xs text-[var(--danger)] hover:underline"
+                        className="text-sm text-[var(--danger)] hover:underline"
                       >
                         Remove
                       </button>
@@ -726,7 +741,7 @@ export default function Automations() {
                     {c.type === 'time_range' && (
                       <>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="text-sm font-medium text-[var(--text-secondary)]">
+                          <label className="text-base font-medium text-[var(--text-secondary)]">
                             After
                             <input
                               type="time"
@@ -735,7 +750,7 @@ export default function Automations() {
                               className={inputCls}
                             />
                           </label>
-                          <label className="text-sm font-medium text-[var(--text-secondary)]">
+                          <label className="text-base font-medium text-[var(--text-secondary)]">
                             Before
                             <input
                               type="time"
@@ -749,7 +764,7 @@ export default function Automations() {
                     )}
                     {c.type === 'device_state' && (
                       <>
-                        <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                        <label className="block text-base font-medium text-[var(--text-secondary)]">
                           Device
                           <select
                             value={String(c.device_id ?? '')}
@@ -776,7 +791,7 @@ export default function Automations() {
                           const selectedProp = props.find((p) => p.key === c.property);
                           return (
                             <>
-                              <label className="mt-3 block text-sm font-medium text-[var(--text-secondary)]">
+                              <label className="mt-3 block text-base font-medium text-[var(--text-secondary)]">
                                 Property
                                 {props.length > 0 ? (
                                   <select
@@ -804,7 +819,7 @@ export default function Automations() {
                                 )}
                               </label>
                               <div className="mt-3">
-                                <span className="block text-sm font-medium text-[var(--text-secondary)]">Equals</span>
+                                <span className="block text-base font-medium text-[var(--text-secondary)]">Equals</span>
                                 <div className="mt-1">
                                   {selectedProp ? (
                                     <ValueControl
@@ -843,7 +858,7 @@ export default function Automations() {
             {/* ============================================================= */}
             <section className="mt-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">Then do this...</h3>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">Then do this...</h3>
                 <div className="flex flex-wrap gap-1">
                   <button type="button" onClick={() => addAction('device_command')} className={pillBtnCls}>+ Control a device</button>
                   <button type="button" onClick={() => addAction('delay')} className={pillBtnCls}>+ Wait</button>
@@ -859,7 +874,7 @@ export default function Automations() {
                     {/* device_command */}
                     {a.type === 'device_command' && (
                       <>
-                        <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                        <label className="block text-base font-medium text-[var(--text-secondary)]">
                           Device
                           <select
                             value={String(a.device_id ?? '')}
@@ -889,7 +904,7 @@ export default function Automations() {
                           const currentProps = (a.properties ?? {}) as Record<string, unknown>;
                           if (props.length === 0) {
                             return (
-                              <label className="mt-3 block text-sm font-medium text-[var(--text-secondary)]">
+                              <label className="mt-3 block text-base font-medium text-[var(--text-secondary)]">
                                 Properties (JSON)
                                 <textarea
                                   value={JSON.stringify(currentProps, null, 2)}
@@ -899,7 +914,7 @@ export default function Automations() {
                                     } catch { /* keep typing */ }
                                   }}
                                   rows={3}
-                                  className={inputCls + ' font-mono text-xs'}
+                                  className={inputCls + ' font-mono'}
                                 />
                               </label>
                             );
@@ -909,8 +924,8 @@ export default function Automations() {
                               {props.map((def) => {
                                 const isActive = def.key in currentProps;
                                 return (
-                                  <div key={def.key} className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-3">
-                                    <label className="flex items-center gap-2 text-sm">
+                                  <div key={def.key} className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+                                    <label className="flex items-center gap-2 text-base">
                                       <input
                                         type="checkbox"
                                         checked={isActive}
@@ -951,7 +966,7 @@ export default function Automations() {
 
                     {/* delay */}
                     {a.type === 'delay' && (
-                      <label className="text-sm font-medium text-[var(--text-secondary)]">
+                      <label className="text-base font-medium text-[var(--text-secondary)]">
                         Duration (seconds)
                         <input
                           type="number"
@@ -966,7 +981,7 @@ export default function Automations() {
                     {/* notify */}
                     {a.type === 'notify' && (
                       <>
-                        <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                        <label className="block text-base font-medium text-[var(--text-secondary)]">
                           Channel
                           <select
                             value={String(a.channel ?? 'dashboard')}
@@ -978,7 +993,7 @@ export default function Automations() {
                             <option value="email">Email</option>
                           </select>
                         </label>
-                        <label className="mt-3 block text-sm font-medium text-[var(--text-secondary)]">
+                        <label className="mt-3 block text-base font-medium text-[var(--text-secondary)]">
                           Message
                           <input
                             value={String(a.message ?? '')}
@@ -992,7 +1007,7 @@ export default function Automations() {
 
                     {/* activate_scene */}
                     {a.type === 'activate_scene' && (
-                      <label className="text-sm font-medium text-[var(--text-secondary)]">
+                      <label className="text-base font-medium text-[var(--text-secondary)]">
                         Scene
                         <select
                           value={String(a.scene_id ?? '')}
@@ -1016,11 +1031,11 @@ export default function Automations() {
             {/* ============================================================= */}
             {/* ADVANCED (Retrigger)                                           */}
             {/* ============================================================= */}
-            <section className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
+            <section className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]">
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((o) => !o)}
-                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className="flex w-full items-center justify-between px-4 py-3 text-base font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 Advanced options
                 <svg
@@ -1036,7 +1051,7 @@ export default function Automations() {
               {advancedOpen && (
                 <div className="border-t border-[var(--border)] px-4 py-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+                    <label className="text-base font-medium text-[var(--text-secondary)]">
                       If triggered again...
                       <select
                         value={draft.retrigger.behavior}
@@ -1053,7 +1068,7 @@ export default function Automations() {
                         <option value="queue">Queue and run after</option>
                       </select>
                     </label>
-                    <label className="text-sm font-medium text-[var(--text-secondary)]">
+                    <label className="text-base font-medium text-[var(--text-secondary)]">
                       Minimum time between runs
                       <div className="mt-1 flex items-center gap-2">
                         <input
@@ -1066,9 +1081,9 @@ export default function Automations() {
                               retrigger: { ...d.retrigger, cooldown_seconds: parseInt(e.target.value, 10) || 0 },
                             }))
                           }
-                          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)]"
+                          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
                         />
-                        <span className="text-sm text-[var(--text-muted)]">seconds</span>
+                        <span className="text-base text-[var(--text-muted)]">seconds</span>
                       </div>
                     </label>
                   </div>
@@ -1083,7 +1098,7 @@ export default function Automations() {
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm"
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-base text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
               >
                 Cancel
               </button>
@@ -1091,9 +1106,9 @@ export default function Automations() {
                 type="button"
                 disabled={saving || !draft.name.trim()}
                 onClick={saveRule}
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-base font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
               >
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>
@@ -1145,11 +1160,11 @@ function SortableActionCard({ id, onRemove, action, children }: {
             <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
           </svg>
         </button>
-        <p className="flex-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{label}</p>
+        <p className="flex-1 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">{label}</p>
         <button
           type="button"
           onClick={onRemove}
-          className="text-xs text-[var(--danger)] hover:underline"
+          className="text-sm text-[var(--danger)] hover:underline"
         >
           Remove
         </button>
@@ -1176,7 +1191,7 @@ function SchedulePicker({ cron, onChange }: { cron: string; onChange: (cron: str
 
   return (
     <div className={'mt-3 space-y-4 ' + cardCls}>
-      <label className="block text-sm font-medium text-[var(--text-secondary)]">
+      <label className="block text-base font-medium text-[var(--text-secondary)]">
         Repeat
         <select
           value={state.repeat}
@@ -1193,7 +1208,7 @@ function SchedulePicker({ cron, onChange }: { cron: string; onChange: (cron: str
 
       {state.repeat === 'specific' && (
         <div>
-          <span className="block text-sm font-medium text-[var(--text-secondary)]">Days</span>
+          <span className="block text-base font-medium text-[var(--text-secondary)]">Days</span>
           <div className="mt-1 flex flex-wrap gap-1">
             {DAY_LABELS.map((label, idx) => (
               <button
@@ -1205,10 +1220,10 @@ function SchedulePicker({ cron, onChange }: { cron: string; onChange: (cron: str
                   update({ days: next });
                 }}
                 className={[
-                  'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                  'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                   state.days[idx]
                     ? 'bg-[var(--accent)] text-white'
-                    : 'border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]',
+                    : 'border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]',
                 ].join(' ')}
               >
                 {label}
@@ -1218,7 +1233,7 @@ function SchedulePicker({ cron, onChange }: { cron: string; onChange: (cron: str
         </div>
       )}
 
-      <label className="block text-sm font-medium text-[var(--text-secondary)]">
+      <label className="block text-base font-medium text-[var(--text-secondary)]">
         Time
         <input
           type="time"

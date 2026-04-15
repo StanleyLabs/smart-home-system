@@ -67,7 +67,7 @@ export function Slider({
 
   return (
     <div className={disabled ? 'pointer-events-none opacity-40' : ''}>
-      <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-base">
         <span className="text-[var(--text-muted)]">{label ?? '\u00a0'}</span>
         <span className="tabular-nums text-[var(--text-secondary)]">
           {local}

@@ -213,29 +213,29 @@ export default function Scenes() {
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl">
-            <h2 className="text-lg font-semibold">Create Scene</h2>
-            <label className="mt-4 block text-sm text-[var(--text-secondary)]">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create Scene</h2>
+            <label className="mt-4 block text-base text-[var(--text-secondary)]">
               Name
               <input
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[var(--text-primary)]"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
               />
             </label>
-            <label className="mt-3 block text-sm text-[var(--text-secondary)]">
+            <label className="mt-3 block text-base text-[var(--text-secondary)]">
               Icon (name or emoji)
               <input
                 value={createIcon}
                 onChange={(e) => setCreateIcon(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[var(--text-primary)]"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
               />
             </label>
-            <p className="mt-4 text-sm font-medium text-[var(--text-secondary)]">Devices</p>
+            <p className="mt-4 text-base font-medium text-[var(--text-secondary)]">Devices</p>
             <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
               {devices.map((d) => (
                 <label
                   key={d.device_id}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
+                  className="flex cursor-pointer items-center gap-2 text-base"
                 >
                   <input
                     type="checkbox"
@@ -251,7 +251,7 @@ export default function Scenes() {
               <button
                 type="button"
                 onClick={() => setCreateOpen(false)}
-                className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm"
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-base text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
               >
                 Cancel
               </button>
@@ -259,7 +259,7 @@ export default function Scenes() {
                 type="button"
                 disabled={saving || !createName.trim()}
                 onClick={submitCreate}
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-base font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
               >
                 Save
               </button>
@@ -271,25 +271,25 @@ export default function Scenes() {
       {captureOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl">
-            <h2 className="text-lg font-semibold">Capture Current</h2>
-            <label className="mt-4 block text-sm text-[var(--text-secondary)]">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Capture Current</h2>
+            <label className="mt-4 block text-base text-[var(--text-secondary)]">
               Name
               <input
                 value={captureName}
                 onChange={(e) => setCaptureName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[var(--text-primary)]"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
               />
             </label>
-            <label className="mt-3 block text-sm text-[var(--text-secondary)]">
+            <label className="mt-3 block text-base text-[var(--text-secondary)]">
               Icon
               <input
                 value={captureIcon}
                 onChange={(e) => setCaptureIcon(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[var(--text-primary)]"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
               />
             </label>
-            <p className="mt-4 text-sm text-[var(--text-secondary)]">Scope</p>
-            <div className="mt-2 flex gap-4 text-sm">
+            <p className="mt-4 text-base text-[var(--text-secondary)]">Scope</p>
+            <div className="mt-2 flex flex-wrap gap-4 text-base">
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -319,7 +319,7 @@ export default function Scenes() {
               <select
                 value={captureRoomId}
                 onChange={(e) => setCaptureRoomId(e.target.value)}
-                className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[var(--text-primary)]"
+                className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)] select-chevron"
               >
                 {rooms.map((r) => (
                   <option key={r.room_id} value={r.room_id}>
@@ -333,7 +333,7 @@ export default function Scenes() {
                 {devices.map((d) => (
                   <label
                     key={d.device_id}
-                    className="flex cursor-pointer items-center gap-2 text-sm"
+                    className="flex cursor-pointer items-center gap-2 text-base"
                   >
                     <input
                       type="checkbox"
@@ -357,7 +357,7 @@ export default function Scenes() {
               <button
                 type="button"
                 onClick={() => setCaptureOpen(false)}
-                className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm"
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-base text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
               >
                 Cancel
               </button>
@@ -365,7 +365,7 @@ export default function Scenes() {
                 type="button"
                 disabled={saving || !captureName.trim() || (captureScope === 'devices' && captureDeviceIds.size === 0)}
                 onClick={submitCapture}
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-base font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
               >
                 Capture
               </button>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
+import { PencilIcon, TrashIcon } from '../components/action-icons';
 import DeviceCard, { type DeviceCardDevice } from '../components/DeviceCard';
 
 type Room = {
@@ -233,24 +234,13 @@ export default function Rooms() {
             <div
               key={r.room_id}
               className={[
-                'rounded-xl border p-4 transition-colors',
+                'relative rounded-xl border p-4 transition-colors',
                 active
                   ? 'border-[var(--accent)] bg-[var(--bg-card-active)]'
                   : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--border-hover)]',
               ].join(' ')}
             >
-              <button
-                type="button"
-                onClick={() => setSelectedId((id) => (id === r.room_id ? null : r.room_id))}
-                className="w-full text-left"
-              >
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{r.name}</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  {count} device{count === 1 ? '' : 's'}
-                  {r.floor ? ` · Floor ${r.floor}` : ''}
-                </p>
-              </button>
-              <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 sm:right-3 sm:top-2.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -258,20 +248,33 @@ export default function Rooms() {
                     setEditName(r.name);
                     setEditFloor(r.floor);
                   }}
-                  className="rounded-lg border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
+                  title="Edit room"
+                  className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
                 >
-                  Edit
+                  <PencilIcon />
                 </button>
                 {isAdmin && (
                   <button
                     type="button"
                     onClick={() => setDeleteRoom(r)}
-                    className="rounded-lg border border-[var(--danger)] px-3 py-1 text-xs text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                    title="Delete room"
+                    className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
                   >
-                    Delete
+                    <TrashIcon />
                   </button>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => setSelectedId((id) => (id === r.room_id ? null : r.room_id))}
+                className="w-full pr-14 text-left sm:pr-16"
+              >
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">{r.name}</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  {count} device{count === 1 ? '' : 's'}
+                  {r.floor ? ` · Floor ${r.floor}` : ''}
+                </p>
+              </button>
             </div>
           );
         })}
