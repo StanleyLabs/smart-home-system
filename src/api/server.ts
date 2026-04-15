@@ -8,7 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { Engine } from "../core/engine.js";
 import { getTlsCredentials } from "../core/network-tls.js";
-import { getBaseUrl, type SystemSettings } from "../types.js";
+import { getPublicDashboardUrl, type SystemSettings } from "../types.js";
 import { authMiddleware, configureAuth } from "./auth.js";
 import { isHotspotMode, getHotspotIp } from "../core/wifi-manager.js";
 import { deviceRoutes } from "./routes/devices.js";
@@ -163,6 +163,14 @@ export function startServer(
     throw err;
   });
 
-  console.log(`API server listening on ${getBaseUrl(settings.network)}`);
+  const displayUrl = isHotspotMode()
+    ? getPublicDashboardUrl(settings.network, {
+        hotspot_active: true,
+        hotspot_ip: getHotspotIp(),
+      })
+    : getPublicDashboardUrl(settings.network, { hotspot_active: false });
+  console.log(
+    `API server listening on ${displayUrl} (${useHttps ? "HTTPS" : "HTTP"})`
+  );
   return server;
 }

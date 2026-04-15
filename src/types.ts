@@ -341,3 +341,23 @@ export function getBaseUrl(network: SystemSettings["network"]): string {
     (protocol === "https" && port === 443);
   return `${protocol}://${hostname}${isDefaultPort ? "" : `:${port}`}`;
 }
+
+/**
+ * URL we show to users and use in API (`public_base_url`).
+ * While the WiFi hotspot is up, the hub serves **plain HTTP** on `api_port` (port 80 is NAT’d to it);
+ * OS captive detection also uses HTTP only — TLS cannot replace the primary listener during hotspot.
+ * After the hub is on the LAN (hotspot off), use {@link getBaseUrl} (HTTPS when TLS is configured).
+ */
+export function getPublicDashboardUrl(
+  network: SystemSettings["network"],
+  ctx: { hotspot_active: boolean; hotspot_ip?: string | null }
+): string {
+  if (!ctx.hotspot_active) {
+    return getBaseUrl(network);
+  }
+  const ip = ctx.hotspot_ip?.trim();
+  if (!ip) {
+    return "http://127.0.0.1/";
+  }
+  return `http://${ip}/`;
+}

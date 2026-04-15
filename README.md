@@ -36,9 +36,9 @@ Options: `--force` (replace existing certs), `--no-iptables`, `--dry-run`, `--ap
 
 Binding directly to port **443** in Node requires elevated privileges (`setcap 'cap_net_bind_service=+ep' $(which node)`) or a reverse proxy; the default script avoids that by using 3000 + NAT.
 
-**Captive hotspot vs HTTPS:** With TLS enabled, the API still serves **plain HTTP** on `api_port` while the hotspot is up (port 80 is NAT’d to the hub; HTTPS-only on that port would break captive detection). After the hub joins your home WiFi and the hotspot stops, **restart the hub** (`systemctl restart …` or `npm start` again) so it serves **HTTPS** on the LAN. Until then, use the HTTP URL on the hotspot if needed.
+**Captive hotspot vs HTTPS:** With TLS enabled, the API still serves **plain HTTP** on `api_port` while the hotspot is up (port 80 is NAT’d to the hub; HTTPS-only on that port would break captive detection). `GET /api/system/wifi/status` **`public_base_url`** is **`http://<hotspot-ip>/`** during hotspot and switches to your normal **`https://…`** base URL from config once the hotspot is off and the hub is on the LAN (restart the process after WiFi handoff so the listener upgrades to HTTPS).
 
-After WiFi setup, use the **https://** URL from the handoff screen (and `public_base_url` in `GET /api/system/wifi/status`) once the hub has restarted with HTTPS.
+First-time setup vs WiFi recovery both use the same HTTP captive listener; only the **post-reconnect** URL changes to HTTPS when TLS is configured.
 
 ## Architecture
 

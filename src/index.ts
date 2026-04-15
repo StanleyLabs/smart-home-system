@@ -8,7 +8,7 @@ import { startServer } from "./api/server.js";
 import { MatterAdapter } from "./adapters/matter-adapter.js";
 import { closeDb } from "./db/database.js";
 import { seedMockDevices } from "./core/seed-devices.js";
-import { getBaseUrl, type SystemSettings } from "./types.js";
+import { getPublicDashboardUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
 import { getHotspotIp } from "./core/wifi-manager.js";
 import { validateHubTlsConfig } from "./core/network-tls.js";
@@ -82,12 +82,14 @@ async function main() {
 
   console.log("Smart Home Hub is running");
   if (hotspotStarted) {
-    const ip = getHotspotIp();
     console.log("  WiFi: Connect to \"Smart-Home-System\" to set up");
-    console.log(`  API: http://${ip}`);
-  } else {
-    console.log(`  API: ${getBaseUrl(settings.network)}`);
   }
+  console.log(
+    `  API: ${getPublicDashboardUrl(settings.network, {
+      hotspot_active: hotspotStarted,
+      hotspot_ip: hotspotStarted ? getHotspotIp() : null,
+    })}`
+  );
   console.log(
     `  MQTT: ${settings.network.mqtt.broker_host}:${settings.network.mqtt.broker_port}` +
       (useEmbedded ? " (embedded broker)" : "")

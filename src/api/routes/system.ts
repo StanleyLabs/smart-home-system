@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import { Hono } from "hono";
 import type { Engine } from "../../core/engine.js";
-import { getBaseUrl, type SystemSettings } from "../../types.js";
+import { getPublicDashboardUrl, type SystemSettings } from "../../types.js";
 import { requireRole } from "../auth.js";
 import {
   scanNetworks,
@@ -9,6 +9,7 @@ import {
   startHotspot,
   stopHotspot,
   getStatus as getWifiStatus,
+  getHotspotIp,
   getHotspotSsid,
 } from "../../core/wifi-manager.js";
 
@@ -88,11 +89,17 @@ export function systemRoutes(engine: Engine, settings: SystemSettings) {
 
   app.get("/wifi/status", async (c) => {
     const status = await getWifiStatus();
+    const hotspotIp = status.hotspot_active
+      ? status.ip?.trim() || getHotspotIp()
+      : null;
     return c.json({
       ...status,
       hotspot_ssid: getHotspotSsid(),
       hostname: settings.network.hostname ?? null,
-      public_base_url: getBaseUrl(settings.network),
+      public_base_url: getPublicDashboardUrl(settings.network, {
+        hotspot_active: status.hotspot_active,
+        hotspot_ip: hotspotIp,
+      }),
     });
   });
 
