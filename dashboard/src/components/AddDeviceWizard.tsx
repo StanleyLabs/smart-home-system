@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../lib/api';
 import { subscribe } from '../lib/mqtt';
 import { setupPayloadIdentityKey } from '../lib/setup-payload-key';
@@ -28,7 +29,7 @@ type CommissionedDevice = {
 
 type CommissioningStatus = 'idle' | 'pairing' | 'configuring' | 'complete' | 'failed';
 
-type View = 'main' | 'manual' | 'pairing' | 'setup';
+type View = 'main' | 'scan' | 'manual' | 'pairing' | 'setup';
 
 type Props = {
   rooms: Room[];
@@ -109,6 +110,10 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
 
   const selectedRef = useRef<DiscoveredDevice | null>(null);
   const scanningStarted = useRef(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const manualNameRef = useRef<HTMLInputElement>(null);
+  const fromScanRef = useRef(false);
+  const [scannerReady, setScannerReady] = useState(false);
 
   /* ── Effects ────────────────────────────────────────────────────────── */
 
@@ -157,6 +162,79 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
     return unsub;
   }, []);
 
+  /* ── QR Scanner ─────────────────────────────────────────────────────── */
+
+  const handleQrScan = useCallback(async (decodedText: string) => {
+    fromScanRef.current = true;
+    setManualCode(decodedText);
+    setManualName('');
+    setManualRoom('');
+    setManualExistingEntryId(null);
+    setScanError(null);
+    setView('manual');
+
+    const key = setupPayloadIdentityKey(decodedText);
+    try {
+      const list = await api.get<SetupQueueEntry[]>('/setup-queue');
+      const existing = list.find((e) => setupPayloadIdentityKey(e.setup_payload) === key);
+      if (existing) {
+        setManualExistingEntryId(existing.entry_id);
+        setManualName(existing.name);
+        setManualRoom(existing.room_id ?? '');
+      }
+    } catch { /* duplicate check is best-effort */ }
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'scan') return;
+    setScannerReady(false);
+
+    const containerId = 'qr-scanner-region';
+    let stopped = false;
+    let scanner: Html5Qrcode | null = null;
+
+    (async () => {
+      try {
+        scanner = new Html5Qrcode(containerId);
+        scannerRef.current = scanner;
+        await scanner.start(
+          { facingMode: 'environment' },
+          {
+            fps: 10,
+            qrbox: (vw: number, vh: number) => {
+              const s = Math.floor(Math.min(vw, vh) * 0.65);
+              return { width: s, height: s };
+            },
+          },
+          (decodedText) => {
+            if (stopped) return;
+            stopped = true;
+            const s = scanner;
+            scanner = null;
+            scannerRef.current = null;
+            const proceed = () => handleQrScan(decodedText);
+            try { s?.stop().then(proceed, proceed); } catch { proceed(); }
+          },
+          () => {}
+        );
+        if (!stopped) setScannerReady(true);
+      } catch {
+        if (!stopped) {
+          setScanError('Unable to access camera. Check permissions or try entering the code manually.');
+        }
+      }
+    })();
+
+    return () => {
+      stopped = true;
+      if (scanner) {
+        try { scanner.stop().catch(() => {}); } catch {}
+        scanner = null;
+        scannerRef.current = null;
+      }
+    };
+  }, [view, handleQrScan]);
+
   /* ── Handlers ───────────────────────────────────────────────────────── */
 
   const handleClose = useCallback(() => {
@@ -170,6 +248,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
   }, [onComplete]);
 
   const openManualEntry = useCallback(() => {
+    fromScanRef.current = false;
     setScanError(null);
     setManualCode('');
     setManualName('');
@@ -177,6 +256,13 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
     setManualExistingEntryId(null);
     setView('manual');
   }, []);
+
+  useEffect(() => {
+    if (view === 'manual' && fromScanRef.current) {
+      fromScanRef.current = false;
+      manualNameRef.current?.focus();
+    }
+  }, [view]);
 
   const lookupManualDuplicate = useCallback(async () => {
     const code = manualCode.trim();
@@ -328,23 +414,26 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
             <div className="space-y-5">
               <button
                 type="button"
-                onClick={openManualEntry}
+                onClick={() => { setScanError(null); setView('scan'); }}
                 className="flex w-full items-center gap-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-primary)] p-4 text-left transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-card-active)]"
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <rect x="2" y="2" width="20" height="20" rx="2" />
-                    <path d="M7 7h3v3H7zM14 7h3v3h-3zM7 14h3v3H7z" />
+                    <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" strokeLinecap="round" strokeLinejoin="round" />
+                    <rect x="7" y="7" width="10" height="10" rx="1" />
                   </svg>
                 </div>
                 <div>
-                  <p className="font-medium text-[var(--text-primary)]">Enter Setup Code</p>
-                  <p className="text-xs text-[var(--text-muted)]">Type the code from the device or its packaging</p>
+                  <p className="font-medium text-[var(--text-primary)]">Scan QR Code</p>
+                  <p className="text-xs text-[var(--text-muted)]">Use your camera to scan the code on the device</p>
                 </div>
               </button>
 
               <p className="text-center text-xs text-[var(--text-muted)]">
-                Queued codes appear on the Devices page under Setup Queue.
+                or{' '}
+                <button type="button" onClick={openManualEntry} className="font-medium text-[var(--accent)] hover:underline">
+                  enter code manually
+                </button>
               </p>
 
               {addedCount > 0 && (
@@ -407,6 +496,37 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
             </div>
           )}
 
+          {/* ════ QR SCAN VIEW ════════════════════════════════════ */}
+          {view === 'scan' && (
+            <div className="space-y-4">
+              <div className="relative min-h-[260px] overflow-hidden rounded-xl bg-black">
+                <div
+                  id="qr-scanner-region"
+                  className="[&_video]:rounded-xl"
+                />
+                {!scannerReady && !scanError && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[var(--accent)]" />
+                    <p className="text-sm text-white/50">Starting camera…</p>
+                  </div>
+                )}
+              </div>
+              {scanError && (
+                <div className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-center text-sm text-[var(--danger)]">
+                  {scanError}
+                </div>
+              )}
+              <p className="text-center text-xs text-[var(--text-muted)]">
+                {!scanError && 'Point your camera at the QR code on the device or its packaging'}
+                {!scanError && <br />}
+                or{' '}
+                <button type="button" onClick={openManualEntry} className="font-medium text-[var(--accent)] hover:underline">
+                  enter code manually
+                </button>
+              </p>
+            </div>
+          )}
+
           {/* ════ MANUAL CODE VIEW ═══════════════════════════════ */}
           {view === 'manual' && (
             <div className="space-y-4">
@@ -438,6 +558,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
               <div>
                 <label className="block text-sm font-medium text-[var(--text-secondary)]">Device name</label>
                 <input
+                  ref={manualNameRef}
                   type="text"
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
@@ -602,6 +723,15 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
               <button type="button" onClick={handleDone} className="rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]">
                 Done
               </button>
+            </>
+          )}
+
+          {view === 'scan' && (
+            <>
+              <button type="button" onClick={() => { setView('main'); setScanError(null); }} className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]">
+                Back
+              </button>
+              <span />
             </>
           )}
 
