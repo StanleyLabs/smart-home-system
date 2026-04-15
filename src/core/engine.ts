@@ -29,11 +29,14 @@ export class Engine {
   readonly notifications: NotificationSystem;
   readonly setupQueue: SetupQueue;
 
+  private static readonly MAX_QUEUE_RETRIES = 10;
+
   private adapters = new Map<string, ProtocolAdapter>();
   private pendingDiscoveries = new Map<string, DiscoveredDevice>();
   private discoveryActive = false;
   private queueProcessing = new Set<string>();
   private queueDiscoveryTimer: ReturnType<typeof setInterval> | null = null;
+  private queueRetryCount = new Map<string, number>();
 
   publish: MqttPublisher = () => {};
 
@@ -89,6 +92,7 @@ export class Engine {
     adapter.onDeviceDiscovered = (discovered) => {
       this.pendingDiscoveries.set(discovered.temp_id, discovered);
       this.publishEvent("device_discovered", discovered);
+      this.retryFailedQueueEntries();
       this.processAllWaiting();
     };
     adapter.onStateChange = (protocolId, properties) => {
@@ -489,6 +493,31 @@ export class Engine {
     this.publishEvent(`setup_queue_${event}`, data);
   }
 
+  /**
+   * Reset all failed queue entries back to waiting so they are picked up
+   * on the next processAllWaiting() cycle (e.g. when a device is discovered).
+   */
+  private retryFailedQueueEntries() {
+    const failed = this.setupQueue.getFailed();
+    if (failed.length === 0) return;
+
+    for (const entry of failed) {
+      this.queueRetryCount.delete(entry.entry_id);
+      this.setupQueue.updateStatus(entry.entry_id, "waiting", { error: undefined });
+      this.publishSetupQueueEvent("entry_updated", {
+        ...entry,
+        status: "waiting",
+        error: null,
+      });
+    }
+
+    this.ensureQueueDiscovery();
+  }
+
+  resetQueueRetries(entryId: string) {
+    this.queueRetryCount.delete(entryId);
+  }
+
   /** Start discovery polling if there are waiting queue entries. */
   ensureQueueDiscovery() {
     if (this.queueDiscoveryTimer) return;
@@ -534,6 +563,7 @@ export class Engine {
       this.setupDevice(device.device_id, entry.name, entry.room_id ?? undefined);
 
       this.setupQueue.updateStatus(entryId, "online", { device_id: device.device_id });
+      this.queueRetryCount.delete(entryId);
       const updated = this.setupQueue.get(entryId)!;
       this.publishSetupQueueEvent("entry_updated", updated);
 
@@ -545,11 +575,18 @@ export class Engine {
         device_id: device.device_id,
       });
     } catch (err: any) {
-      this.setupQueue.updateStatus(entryId, "failed", {
-        error: err.message ?? String(err),
-      });
-      const updated = this.setupQueue.get(entryId)!;
-      this.publishSetupQueueEvent("entry_updated", updated);
+      const attempts = (this.queueRetryCount.get(entryId) ?? 0) + 1;
+      this.queueRetryCount.set(entryId, attempts);
+
+      if (attempts >= Engine.MAX_QUEUE_RETRIES) {
+        this.setupQueue.updateStatus(entryId, "failed", {
+          error: err.message ?? String(err),
+        });
+        const updated = this.setupQueue.get(entryId)!;
+        this.publishSetupQueueEvent("entry_updated", updated);
+      } else {
+        this.setupQueue.updateStatus(entryId, "waiting");
+      }
     } finally {
       this.queueProcessing.delete(entryId);
     }

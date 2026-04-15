@@ -81,6 +81,7 @@ export function setupQueueRoutes(engine: Engine) {
       return c.json({ error: "Device is already online" }, 400);
     }
 
+    engine.resetQueueRetries(entryId);
     engine.setupQueue.updateStatus(entryId, "waiting", { error: undefined });
     const updated = engine.setupQueue.get(entryId)!;
     engine.publishSetupQueueEvent("entry_updated", updated);

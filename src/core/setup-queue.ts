@@ -143,4 +143,13 @@ export class SetupQueue {
       )
       .all() as SetupQueueEntry[];
   }
+
+  getFailed(): SetupQueueEntry[] {
+    const db = getDb();
+    return db
+      .prepare(
+        "SELECT * FROM setup_queue WHERE status = 'failed' ORDER BY created_at ASC"
+      )
+      .all() as SetupQueueEntry[];
+  }
 }
