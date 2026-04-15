@@ -220,33 +220,30 @@ function CaptiveSetup() {
                 </li>
                 <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
                 <li className="pl-1">
-                  Paste the link into Safari or Chrome, or tap <strong>Open</strong>.
+                  In <strong>Safari</strong> or <strong>Chrome</strong>, paste the link into the address bar. Don&rsquo;t open it in this sheet &mdash; the captive browser can&rsquo;t reach your hub.
                 </li>
               </ol>
 
               <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
+                <p className="mb-2 text-center text-xs text-[var(--text-muted)]">
+                  Tap once to select, or use Copy
+                </p>
                 <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] py-1 text-center">
-                  <a
-                    href={setupUrl}
-                    className="inline-block whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)] underline decoration-2 underline-offset-2 [text-decoration-skip-ink:none] touch-manipulation"
+                  <span
+                    className="inline-block cursor-text select-all whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)]"
+                    title={setupUrl}
                   >
                     {setupUrl}
-                  </a>
+                  </span>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                <div className="mt-3 flex justify-center">
                   <button
                     type="button"
                     onClick={() => void copySetupUrl()}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] touch-manipulation hover:bg-[var(--border)]/40"
+                    className="w-full max-w-xs rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white touch-manipulation hover:bg-[var(--accent-hover)] sm:w-auto sm:min-w-[12rem]"
                   >
                     {urlCopied ? 'Copied' : 'Copy link'}
                   </button>
-                  <a
-                    href={setupUrl}
-                    className="inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white touch-manipulation hover:bg-[var(--accent-hover)]"
-                  >
-                    Open
-                  </a>
                 </div>
               </div>
             </div>
