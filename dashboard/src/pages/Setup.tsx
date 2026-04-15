@@ -149,9 +149,6 @@ function CaptiveSetup() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
-  /** iOS treats `-webkit-text-security` like a password field (strong-password UI). Keep plain text; label says "key". */
-  const [wpaIgnoreIosPw, setWpaIgnoreIosPw] = useState(true);
-
   useEffect(() => {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
   }, []);
@@ -365,17 +362,15 @@ function CaptiveSetup() {
                   spellCheck={false}
                   data-1p-ignore
                   data-lpignore="true"
-                  readOnly={wpaIgnoreIosPw}
-                  onFocus={() => setWpaIgnoreIosPw(false)}
                   value={wifiPassword}
                   onChange={(e) => setWifiPassword(e.target.value)}
                   placeholder=""
                   aria-label="Wi-Fi WPA network key"
-                  className="relative z-10 w-full min-w-0 bg-transparent px-4 py-3 font-mono text-sm leading-normal tracking-[0.14em] text-transparent caret-[var(--accent)] outline-none placeholder:text-transparent selection:bg-transparent selection:text-transparent"
+                  className="relative z-10 w-full min-w-0 bg-transparent px-4 py-3 font-mono text-base leading-normal tracking-[0.14em] text-transparent caret-[var(--accent)] outline-none placeholder:text-transparent selection:bg-transparent selection:text-transparent"
                   style={{ WebkitTextFillColor: 'transparent' }}
                 />
                 <div
-                  className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden px-4 font-mono text-sm leading-normal whitespace-nowrap text-[var(--text-primary)]"
+                  className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden px-4 font-mono text-base leading-normal whitespace-nowrap text-[var(--text-primary)]"
                   aria-hidden
                 >
                   {wifiPassword.length > 0 ? (
