@@ -232,7 +232,14 @@ function CaptiveSetup() {
           </div>
         )}
 
-        <div className="flex flex-col gap-6">
+        <form
+          className="flex flex-col gap-6"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!loading && canSubmit()) void submit();
+          }}
+        >
           <h2 className="text-2xl font-semibold text-[var(--text-primary)]">WiFi</h2>
 
           {wifiNetworks.length > 0 && (
@@ -257,6 +264,8 @@ function CaptiveSetup() {
               style={{ maxHeight: showManual ? '80px' : '0', opacity: showManual ? 1 : 0 }}
             >
               <input
+                name="wifi-ssid"
+                autoComplete="off"
                 value={selectedSsid && !wifiNetworks.find((n) => n.ssid === selectedSsid) ? selectedSsid : ''}
                 onChange={(e) => { setSelectedSsid(e.target.value); setWifiPassword(''); }}
                 placeholder="Network name (SSID)"
@@ -265,18 +274,28 @@ function CaptiveSetup() {
             </div>
           </div>
 
-          {/* Password + hostname appear once a network is selected */}
+          {/* WPA key: not type="password" — browsers treat that as a site login and offer "create/save password". */}
           {selectedSsid && (
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[var(--text-secondary)]">
+              <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="captive-wifi-wpa-key">
                 Password for {selectedSsid}
               </label>
               <input
-                type="password"
+                id="captive-wifi-wpa-key"
+                name="wifi-wpa-key"
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                data-1p-ignore
+                data-lpignore="true"
                 value={wifiPassword}
                 onChange={(e) => setWifiPassword(e.target.value)}
                 placeholder="WiFi password"
-                className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                className="[-webkit-text-security:disc] rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                aria-label="Wi-Fi network password"
               />
             </div>
           )}
@@ -284,10 +303,13 @@ function CaptiveSetup() {
           <div className="border-t border-[var(--border)] pt-6">
             <h2 className="mb-4 text-2xl font-semibold text-[var(--text-primary)]">Hostname</h2>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[var(--text-secondary)]">
+              <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="captive-hub-hostname">
                 How this hub appears on your network
               </label>
               <input
+                id="captive-hub-hostname"
+                name="hub-mdns-hostname"
+                autoComplete="off"
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
                 placeholder="smarthome.local"
@@ -295,18 +317,17 @@ function CaptiveSetup() {
               />
             </div>
           </div>
-        </div>
 
-        <div className="mt-10">
-          <button
-            type="button"
-            disabled={loading || !canSubmit()}
-            onClick={() => void submit()}
-            className="w-full rounded-xl bg-[var(--accent)] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
-          >
-            {loading ? 'Please wait\u2026' : 'Connect and continue setup'}
-          </button>
-        </div>
+          <div className="mt-10">
+            <button
+              type="submit"
+              disabled={loading || !canSubmit()}
+              className="w-full rounded-xl bg-[var(--accent)] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              {loading ? 'Please wait\u2026' : 'Connect and continue setup'}
+            </button>
+          </div>
+        </form>
       </div>
     </Shell>
   );
