@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import QrScanner from 'qr-scanner';
 import { api } from '../lib/api';
 import { subscribe } from '../lib/mqtt';
 import { setupPayloadIdentityKey } from '../lib/setup-payload-key';
@@ -79,7 +80,12 @@ function parseMatterQr(raw: string): string | null {
   return trimmed || null;
 }
 
-function QrScanner({
+/** qr-scanner may call back with a string (legacy) or { data } (current API). */
+function decodeQrPayload(result: QrScanner.ScanResult | string): string {
+  return typeof result === 'string' ? result : result.data;
+}
+
+function MatterQrScanner({
   onScan,
   onError,
   continuous,
@@ -98,18 +104,18 @@ function QrScanner({
   onErrorRef.current = onError;
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
 
     let destroyed = false;
-    let scanner: import('qr-scanner').default | null = null;
+    let scanner: QrScanner | null = null;
 
     async function start() {
-      const QrScannerLib = (await import('qr-scanner')).default;
       if (destroyed || !videoRef.current) return;
 
-      scanner = new QrScannerLib(videoRef.current, (result) => {
+      scanner = new QrScanner(videoRef.current, (result) => {
         if (destroyed) return;
-        const val = result.data;
+        const val = decodeQrPayload(result);
         if (!continuous && val === lastScanned.current) return;
         const parsed = parseMatterQr(val);
         if (parsed) {
@@ -121,6 +127,7 @@ function QrScanner({
           onScanRef.current(parsed);
         }
       }, {
+        returnDetailedScanResult: true,
         preferredCamera: 'environment',
         highlightScanRegion: true,
         highlightCodeOutline: true,
@@ -320,6 +327,15 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
     }
   }, [manualCode]);
 
+  const openManualEntry = useCallback(() => {
+    setScanError(null);
+    setManualCode('');
+    setManualName('');
+    setManualRoom('');
+    setManualExistingEntryId(null);
+    setView('manual');
+  }, []);
+
   // Add scanned device to queue, go back to scanner
   const handleAddScanned = useCallback(async () => {
     if (!scanCode) return;
@@ -512,13 +528,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
 
               <button
                 type="button"
-                onClick={() => {
-                  setManualCode('');
-                  setManualName('');
-                  setManualRoom('');
-                  setManualExistingEntryId(null);
-                  setView('manual');
-                }}
+                onClick={openManualEntry}
                 className="w-full text-center text-sm text-[var(--accent)] hover:underline"
               >
                 Or enter a setup code manually
@@ -585,10 +595,17 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
           {/* ════ SCANNING VIEW ═══════════════════════════════════ */}
           {view === 'scanning' && (
             <div className="space-y-4">
-              <QrScanner onScan={handleQrScanned} onError={() => setView('manual')} />
+              <MatterQrScanner onScan={handleQrScanned} onError={openManualEntry} />
               <p className="text-center text-xs text-[var(--text-muted)]">
                 Point at the QR code on the device box
               </p>
+              <button
+                type="button"
+                onClick={openManualEntry}
+                className="w-full text-center text-sm text-[var(--accent)] hover:underline"
+              >
+                Enter code manually
+              </button>
               {addedCount.current > 0 && (
                 <div className="rounded-xl bg-[var(--success)]/10 px-4 py-2.5 text-center text-sm font-medium text-[var(--success)]">
                   {addedCount.current} device{addedCount.current !== 1 ? 's' : ''} added — see Setup Queue on the Devices page
@@ -734,7 +751,7 @@ export default function AddDeviceWizard({ rooms, onClose, onComplete }: Props) {
                   {pairCredMode === 'qr' ? (
                     <div>
                       <p className="mb-2 text-sm text-[var(--text-secondary)]">Scan the QR code on your device</p>
-                      <QrScanner onScan={handlePairQrScan} onError={() => setPairCredMode('manual')} />
+                      <MatterQrScanner onScan={handlePairQrScan} onError={() => setPairCredMode('manual')} />
 
                       {selectedDevice.protocol === 'matter' && (
                         <div className="mt-3 space-y-2">
