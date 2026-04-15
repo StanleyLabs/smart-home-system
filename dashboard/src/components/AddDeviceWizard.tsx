@@ -80,6 +80,12 @@ function parseMatterQr(raw: string): string | null {
   return trimmed || null;
 }
 
+function canUseQrCamera(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!window.isSecureContext) return false;
+  return typeof navigator.mediaDevices?.getUserMedia === 'function';
+}
+
 function MatterQrScanner({
   onScan,
   continuous,
@@ -89,14 +95,45 @@ function MatterQrScanner({
 }) {
   const reactId = useId().replace(/:/g, '');
   const containerId = `matter-qr-${reactId}`;
+  const fileScanId = `${containerId}-fs`;
   const onScanRef = useRef(onScan);
-  const [status, setStatus] = useState<'loading' | 'active' | 'error'>('loading');
+  const [phase, setPhase] = useState<'loading' | 'live' | 'offline'>(() =>
+    canUseQrCamera() ? 'loading' : 'offline',
+  );
+  const [fileError, setFileError] = useState<string | null>(null);
   const lastScanned = useRef('');
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   onScanRef.current = onScan;
 
+  const scanFromFile = useCallback(
+    async (file: File) => {
+      setFileError(null);
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const html5 = new Html5Qrcode(fileScanId, { verbose: false });
+        try {
+          const text = await html5.scanFile(file, false);
+          const parsed = parseMatterQr(text);
+          if (parsed) {
+            lastScanned.current = text;
+            onScanRef.current(parsed);
+          } else {
+            setFileError('No setup code found in that image. Try a clearer photo of the QR code.');
+          }
+        } finally {
+          html5.clear();
+        }
+      } catch {
+        setFileError('Could not read a QR code from that image.');
+      }
+    },
+    [fileScanId],
+  );
+
   useEffect(() => {
+    if (phase !== 'loading') return;
+
     let cancelled = false;
     const scanConfig = {
       fps: 10,
@@ -143,7 +180,7 @@ function MatterQrScanner({
         } else {
           await runStart({ facingMode: 'environment' });
         }
-        if (!cancelled) setStatus('active');
+        if (!cancelled) setPhase('live');
       } catch {
         try {
           if (html5.isScanning) await html5.stop();
@@ -153,9 +190,9 @@ function MatterQrScanner({
         }
         try {
           await runStart({ facingMode: 'environment' });
-          if (!cancelled) setStatus('active');
+          if (!cancelled) setPhase('live');
         } catch {
-          if (!cancelled) setStatus('error');
+          if (!cancelled) setPhase('offline');
         }
       }
     }
@@ -170,17 +207,57 @@ function MatterQrScanner({
         void s.stop().then(() => s.clear()).catch(() => {});
       }
     };
-  }, [containerId, continuous]);
+  }, [phase, containerId, continuous]);
 
-  if (status === 'error') {
+  if (phase === 'offline') {
+    const insecure = typeof window !== 'undefined' && !window.isSecureContext;
     return (
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[var(--text-muted)]">
-          <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="1" y1="1" x2="23" y2="23" strokeLinecap="round" />
-        </svg>
-        <p className="text-center text-sm text-[var(--text-muted)]">Camera not available</p>
-        <p className="text-center text-xs text-[var(--text-muted)]">Use HTTPS or localhost, and allow camera access when prompted.</p>
+      <div className="space-y-4">
+        <div id={fileScanId} className="sr-only" aria-hidden />
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-5">
+          <p className="text-sm font-medium text-[var(--text-primary)]">Camera not available in this browser</p>
+          {insecure ? (
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
+              Mobile browsers only allow the camera on a <strong>secure</strong> page (HTTPS, or{' '}
+              <code className="rounded bg-[var(--bg-card-active)] px-1 font-mono text-xs">localhost</code>
+              ). Opening the hub as plain{' '}
+              <code className="rounded bg-[var(--bg-card-active)] px-1 font-mono text-xs">http://192.168…</code>{' '}
+              blocks camera access — that is a browser rule, not something the app can disable.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              Allow camera access when prompted, or use one of the options below.
+            </p>
+          )}
+          <p className="mt-3 text-sm text-[var(--text-secondary)]">
+            <strong>Upload a photo</strong> of the QR code (screenshot or picture), or use{' '}
+            <strong>Enter code manually</strong> under the scanner area.
+          </p>
+          <label className="mt-4 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-card)] px-4 py-6 transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-card-active)]">
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void scanFromFile(f);
+              }}
+            />
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[var(--accent)]">
+              <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+            <span className="text-sm font-medium text-[var(--accent)]">Choose image with QR code</span>
+            <span className="text-center text-xs text-[var(--text-muted)]">Gallery or photo — works without HTTPS</span>
+          </label>
+          {fileError && (
+            <p className="mt-3 text-center text-sm text-[var(--danger)]" role="alert">
+              {fileError}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -188,7 +265,7 @@ function MatterQrScanner({
   return (
     <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-black">
       <div id={containerId} className="min-h-[240px] w-full [&_video]:max-h-[320px] [&_video]:w-full [&_video]:object-cover" />
-      {status === 'loading' && (
+      {phase === 'loading' && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
         </div>
