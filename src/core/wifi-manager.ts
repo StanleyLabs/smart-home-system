@@ -319,16 +319,15 @@ async function ensureCaptivePortalRedirect(iface?: string): Promise<void> {
 }
 
 async function removeCaptivePortalRedirect(): Promise<void> {
-  // Remove both interface-specific and global rules (best effort)
-  const rules = [
-    hotspotIface
-      ? `-i ${hotspotIface} -p tcp --dport 80 -j REDIRECT --to-port 3000`
-      : null,
-    "-p tcp --dport 80 -j REDIRECT --to-port 3000",
-  ].filter(Boolean);
-  for (const rule of rules) {
+  // Only remove the interface-specific rule that startHotspot() added.
+  // The global rule (no -i flag) is installed by setup-linux.sh /
+  // systemd and must stay so the hub is reachable on port 80 after
+  // switching to the home WiFi.
+  if (hotspotIface) {
     try {
-      await run(`sudo iptables -t nat -D PREROUTING ${rule}`);
+      await run(
+        `sudo iptables -t nat -D PREROUTING -i ${hotspotIface} -p tcp --dport 80 -j REDIRECT --to-port 3000`
+      );
     } catch {}
   }
 }
