@@ -3,9 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
 import type { AuthUser } from '../stores/auth-store';
-import { Toggle } from '../components/Toggle';
-
-const PHASE2_STEPS = 6;
+const PHASE2_STEPS = 5;
 
 type WifiNetwork = { ssid: string; signal: number; security: string };
 type WifiStatus = {
@@ -437,7 +435,7 @@ function CaptiveSetup() {
               </li>
               <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
               <li className="pl-1">
-                In <strong>Safari</strong> or <strong>Chrome</strong>, paste the link into the address bar. Don&rsquo;t open it in this sheet &mdash; the captive browser can&rsquo;t reach your hub.
+                Paste the link into the address bar in <strong>Safari</strong> or <strong>Chrome</strong> to continue setup.
               </li>
             </ol>
 
@@ -629,7 +627,6 @@ export default function Setup() {
   const [timezone, setTimezone] = useState(defaultTimeZone);
   const [tempUnit, setTempUnit] = useState<'F' | 'C'>('F');
   const timezoneOptions = useMemo(() => getTimeZoneOptions(), []);
-  const [matterEnabled, setMatterEnabled] = useState(true);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomFloor, setRoomFloor] = useState('');
@@ -709,15 +706,10 @@ export default function Setup() {
           timezone: timezone.trim(),
           temperature_unit: tempUnit,
         });
+        await api.post('/setup/step/6', { matter: true, zigbee: true, zwave: true });
       } else if (n === 4) {
-        await api.post('/setup/step/6', {
-          matter_enabled: matterEnabled,
-          zigbee_enabled: false,
-          zwave_enabled: false,
-        });
-      } else if (n === 5) {
         await api.post('/setup/step/7', { rooms });
-      } else if (n === 6) {
+      } else if (n === 5) {
         await api.post('/setup/step/8', {
           language,
           username: username.trim(),
@@ -725,7 +717,9 @@ export default function Setup() {
           hub_name: hubName.trim(),
           timezone: timezone.trim(),
           temperature_unit: tempUnit,
-          matter_enabled: matterEnabled,
+          matter: true,
+          zigbee: true,
+          zwave: true,
           rooms,
         });
       }
@@ -754,7 +748,7 @@ export default function Setup() {
     setError(null);
     setLoading(true);
     try {
-      await postStep(6);
+      await postStep(5);
       const res = await api.post<CompleteResponse>('/setup/complete');
       setAuth(res.user, res.token);
       navigate({ to: '/', replace: true });
@@ -776,6 +770,10 @@ export default function Setup() {
     if (rooms.some((r) => r.name.toLowerCase() === n.toLowerCase())) return;
     setRooms((r) => [...r, { name: n, floor: roomFloor.trim() || '1' }]);
     setRoomName('');
+  }
+
+  function removeRoom(index: number) {
+    setRooms((rows) => rows.filter((_, i) => i !== index));
   }
 
   // -- Phase 2 render --------------------------------------------------------
@@ -935,39 +933,8 @@ export default function Setup() {
           </div>
         )}
 
-        {/* Step 4: Protocols */}
+        {/* Step 4: Rooms */}
         {step === 4 && (
-          <div className="flex flex-col gap-6">
-            <div>
-              <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Protocols</h2>
-              <p className="mt-2 text-[var(--text-secondary)]">Choose which radios to enable.</p>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] px-5 py-4">
-              <div>
-                <p className="font-medium text-[var(--text-primary)]">Matter</p>
-                <p className="text-sm text-[var(--text-muted)]">IP-based smart home devices</p>
-              </div>
-              <Toggle checked={matterEnabled} onChange={setMatterEnabled} />
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card-active)] px-5 py-4 opacity-80">
-              <div>
-                <p className="font-medium text-[var(--text-primary)]">Zigbee</p>
-                <p className="text-sm text-[var(--warning)]">Coming soon</p>
-              </div>
-              <Toggle checked={false} onChange={() => {}} disabled />
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card-active)] px-5 py-4 opacity-80">
-              <div>
-                <p className="font-medium text-[var(--text-primary)]">Z-Wave</p>
-                <p className="text-sm text-[var(--warning)]">Coming soon</p>
-              </div>
-              <Toggle checked={false} onChange={() => {}} disabled />
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Rooms */}
-        {step === 5 && (
           <div className="flex flex-col gap-6">
             <div>
               <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Rooms</h2>
@@ -994,10 +961,22 @@ export default function Setup() {
             <button type="button" onClick={addCustomRoom} className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] py-3 text-sm font-medium text-[var(--text-primary)] hover:border-[var(--border-hover)]">Add room</button>
             {rooms.length > 0 && (
               <ul className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] p-4">
-                {rooms.map((r) => (
-                  <li key={`${r.name}-${r.floor}`} className="flex items-center justify-between text-[var(--text-primary)]">
-                    <span>{r.name}</span>
-                    <span className="text-sm text-[var(--text-muted)]">Floor {r.floor}</span>
+                {rooms.map((r, index) => (
+                  <li key={`${r.name}-${r.floor}-${index}`} className="flex items-center justify-between gap-3 text-[var(--text-primary)]">
+                    <span className="min-w-0 flex-1">
+                      {r.name}
+                      <span className="ml-2 text-sm text-[var(--text-muted)]">Floor {r.floor}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeRoom(index)}
+                      className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/15 hover:text-[var(--danger)]"
+                      aria-label={`Remove ${r.name}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -1005,8 +984,8 @@ export default function Setup() {
           </div>
         )}
 
-        {/* Step 6: Review */}
-        {step === 6 && (
+        {/* Step 5: Review */}
+        {step === 5 && (
           <div className="flex flex-col gap-6">
             <div>
               <h2 className="text-2xl font-semibold text-[var(--text-primary)]">You&apos;re all set</h2>
@@ -1037,8 +1016,8 @@ export default function Setup() {
                 <dd className="text-right font-medium text-[var(--text-primary)]">&deg;{tempUnit}</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-[var(--text-muted)]">Matter</dt>
-                <dd className="text-right font-medium text-[var(--success)]">{matterEnabled ? 'On' : 'Off'}</dd>
+                <dt className="text-[var(--text-muted)]">Protocols</dt>
+                <dd className="text-right font-medium text-[var(--success)]">Matter, Zigbee, Z-Wave</dd>
               </div>
               <div className="border-t border-[var(--border)] pt-4">
                 <dt className="mb-2 text-[var(--text-muted)]">Rooms</dt>
