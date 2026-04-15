@@ -7,6 +7,7 @@ if ! command -v apt-get &>/dev/null; then
   exit 1
 fi
 
+INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENABLE_BLE=false
 for arg in "$@"; do
   case "$arg" in
@@ -63,9 +64,14 @@ echo "==> Installing captive portal DNS config..."
 sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
 sudo cp "$(dirname "$0")/../deploy/shs-captive.conf" /etc/NetworkManager/dnsmasq-shared.d/
 
-echo "==> Setting up port redirect (80 -> 3000)..."
-sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null \
-  || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000
+API_PORT="$(python3 -c 'import json; print(json.load(open("'"${INSTALL_DIR}"'/config/system.json")).get("network",{}).get("api_port",80))' 2>/dev/null || echo 80)"
+if [ "$API_PORT" -ne 80 ]; then
+  echo "==> Setting up port redirect (80 -> ${API_PORT})..."
+  sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port "$API_PORT" 2>/dev/null \
+    || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port "$API_PORT"
+else
+  echo "==> Hub listens on port 80 directly; no 80->port redirect needed."
+fi
 
 if command -v iptables-save &>/dev/null; then
   sudo apt-get install -y iptables-persistent 2>/dev/null || true
@@ -74,7 +80,6 @@ if command -v iptables-save &>/dev/null; then
 fi
 
 echo "==> Configuring sudoers for hub process..."
-INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SUDOERS_FILE="/etc/sudoers.d/smarthub"
 CURRENT_USER="${SUDO_USER:-$USER}"
 sudo tee "$SUDOERS_FILE" > /dev/null <<SUDOERS

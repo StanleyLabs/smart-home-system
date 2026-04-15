@@ -12,9 +12,9 @@ npm run setup
 npm run dev
 ```
 
-The hub starts on **http://localhost:3000**. On first launch, you'll be guided through a setup wizard to create your admin account, connect to WiFi, and configure the hub.
+The hub starts on **http://localhost** (port 80). On first launch, you'll be guided through a setup wizard to create your admin account, connect to WiFi, and configure the hub.
 
-> **Production (Linux):** The setup script adds an iptables redirect from port 80 to 3000 so the hub is reachable at a clean URL like `http://home.local`.
+> **Note:** In HTTP mode the hub listens on port 80. When HTTPS is enabled, it switches to port 3000 (HTTP/captive) with TLS on port 3001, and iptables maps 443 → 3001.
 
 ### HTTPS on the LAN
 
@@ -33,8 +33,8 @@ Use **`--hostname myhub.local`** to set the cert SAN and `network.hostname` in o
 This script:
 
 - Creates `certs/hub.pem` and `certs/hub.key` (self-signed; SAN includes your `network.hostname` from `config/system.json` plus `localhost`).
-- Sets `network.protocol` to `https`, `network.tls`, **`network.api_port`** to **3000** (plain **HTTP** — captive / `http://`), **`network.https_listen_port`** to **3001** (TLS — `https://`), and **`network.public_url_port`** to **443** so dashboard URLs show `https://hostname/`.
-- Adds and persists iptables **443 → https_listen_port** (default **3001**). Port **80 → 3000** is unchanged.
+- Sets `network.protocol` to `https`, `network.tls`, **`network.api_port`** to **3000** (plain **HTTP** — captive portal), **`network.https_listen_port`** to **3001** (TLS — `https://`), and **`network.public_url_port`** to **443** so dashboard URLs show `https://hostname/`.
+- Adds and persists iptables **443 → https_listen_port** (default **3001**). An **80 → 3000** redirect is added for the captive portal since the HTTP listener moves off port 80.
 
 **Upgrading from an older layout:** Re-run this script or restart the hub — startup and this script both **strip legacy `443 → 3000`** rules and apply **`443 → https_listen_port`** automatically (needs passwordless `sudo iptables` as in `setup-linux.sh`).
 
@@ -136,7 +136,7 @@ That's it. The setup script configures sudoers, iptables, captive portal DNS, an
 | `build-essential`, `python3` | Compile native npm modules (`bcrypt`, `better-sqlite3`) |
 | `avahi-daemon`, `avahi-utils`, `libnss-mdns` | mDNS discovery for Matter devices |
 | `wireless-tools`, `network-manager` | WiFi onboarding hotspot, scanning, and connection (`nmcli`) |
-| `iptables-persistent` | Persist port 80 → 3000 (and 443 → https_listen_port when HTTPS is enabled) across reboots |
+| `iptables-persistent` | Persist port redirects (80 → api_port when not 80, 443 → https_listen_port when HTTPS) across reboots |
 | `bluetooth`, `bluez`, `libbluetooth-dev` | BLE commissioning (optional, use `--ble`) |
 | Node.js 20+ | Runtime (installed via NodeSource if missing) |
 
@@ -146,7 +146,7 @@ The hub process never runs as root. A narrowly scoped sudoers file (installed by
 
 | Command | Purpose |
 |---------|---------|
-| `iptables` | Port 80 → 3000 for captive portal; 443 → https_listen_port (e.g. 3001) when HTTPS is configured |
+| `iptables` | Port 80 → api_port (when not 80); 443 → https_listen_port (e.g. 3001) when HTTPS is configured |
 | `scripts/set-hostname.sh` | Apply mDNS hostname changes |
 | `scripts/install-captive-conf.sh` | Install captive portal DNS config |
 

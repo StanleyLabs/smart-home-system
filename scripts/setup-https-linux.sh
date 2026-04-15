@@ -2,7 +2,8 @@
 #
 # Generate a self-signed TLS certificate for the hub, enable HTTPS in config/system.json,
 # and persist iptables PREROUTING 443 -> (api_port + 1) where the TLS listener runs.
-# Plain HTTP stays on api_port (default 3000) for the captive portal.
+# When HTTPS is enabled, the HTTP listener moves to api_port 3000 (for captive portal)
+# and the TLS listener runs on api_port + 1 (3001).
 #
 # Run after ./scripts/setup-linux.sh (or ensure openssl + python3 + sudo for iptables).
 # Trust the cert on each client (browser warning) or replace certs/ with your own PEM files.
@@ -24,7 +25,7 @@ DRY_RUN=false
 
 usage() {
   echo "Usage: $0 [options]"
-  echo "  --api-port N     Plain HTTP / captive port (default: 3000). HTTPS uses N+1 unless set in config."
+  echo "  --api-port N     Plain HTTP / captive port (default: 3000 for HTTPS). HTTPS TLS listens on N+1."
   echo "  --hostname NAME  Use this mDNS name for the cert SAN and update config (e.g. kitchen.local)."
   echo "                   If omitted, uses network.hostname from config (default smarthome.local)."
   echo "  --force          Regenerate cert/key even if they already exist."
@@ -150,10 +151,7 @@ net["api_port"] = api_port
 net["https_listen_port"] = https_listen
 net["hostname"] = os.environ["CERT_HOSTNAME"].strip()
 net["tls"] = {"cert_path": cert_rel, "key_path": key_rel}
-if api_port == 3000:
-    net["public_url_port"] = 443
-else:
-    net.pop("public_url_port", None)
+net["public_url_port"] = 443
 
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
@@ -164,9 +162,9 @@ else
   if [ "$HTTPS_LISTEN" -eq 443 ]; then
     echo "==> HTTPS listens on 443; no 443→port NAT rule needed."
   else
-    echo "==> iptables: remove legacy 443 -> 3000 (if any), then set 443 -> ${HTTPS_LISTEN}..."
-    while sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3000 2>/dev/null; do
-      echo "    removed legacy 443 -> 3000"
+    echo "==> iptables: remove stale 443 -> ${API_PORT} (if any), then set 443 -> ${HTTPS_LISTEN}..."
+    while sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port "${API_PORT}" 2>/dev/null; do
+      echo "    removed stale 443 -> ${API_PORT}"
     done
     while sudo iptables -t nat -D PREROUTING -p tcp --dport 443 -j REDIRECT --to-port "${HTTPS_LISTEN}" 2>/dev/null; do
       true

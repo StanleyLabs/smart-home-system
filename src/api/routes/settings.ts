@@ -43,17 +43,17 @@ export function settingsRoutes(engine: Engine, settings: SystemSettings) {
     if (section === "network") {
       const merged = { ...settings.network, ...body } as SystemSettings["network"];
       if (merged.protocol === "http") {
+        merged.api_port = 80;
         delete merged.tls;
         delete merged.https_listen_port;
         delete merged.public_url_port;
       } else if (merged.protocol === "https") {
+        merged.api_port = 3000;
         if (!merged.tls) {
           merged.tls = { cert_path: "certs/hub.pem", key_path: "certs/hub.key" };
         }
-        const api = merged.api_port ?? 3000;
-        merged.api_port = api;
-        if (merged.https_listen_port == null) merged.https_listen_port = api + 1;
-        if (api === 3000 && merged.public_url_port == null) merged.public_url_port = 443;
+        if (merged.https_listen_port == null) merged.https_listen_port = 3001;
+        if (merged.public_url_port == null) merged.public_url_port = 443;
       }
       settings.network = merged;
       saveSettings(settings);

@@ -13,7 +13,7 @@ import { closeDb } from "./db/database.js";
 import { seedMockDevices } from "./core/seed-devices.js";
 import { getPublicDashboardUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
-import { getHotspotIp, syncHttpsLanPortForwarding } from "./core/wifi-manager.js";
+import { getHotspotIp, setHttpListenPort, syncHttpsLanPortForwarding } from "./core/wifi-manager.js";
 import { validateHubTlsConfig } from "./core/network-tls.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,6 +80,7 @@ async function main() {
   const mqtt = new MqttBridge(engine, settings);
   await mqtt.connect();
 
+  setHttpListenPort(settings.network.api_port);
   validateHubTlsConfig(settings.network);
   await syncHttpsLanPortForwarding(settings.network);
   startServer(engine, settings, {

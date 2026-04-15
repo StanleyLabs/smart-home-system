@@ -14,7 +14,7 @@
   },
   "network": {
     "hostname": "smarthome.local",
-    "api_port": 3000,
+    "api_port": 80,
     "protocol": "http",
     "mqtt": {
       "broker_host": "localhost",

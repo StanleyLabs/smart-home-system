@@ -17,6 +17,8 @@ let hotspotActive = false;
 let hotspotIp = DEFAULT_HOTSPOT_IP;
 let hotspotIface: string | null = null;
 let cachedNetworks: WifiNetwork[] = [];
+/** The port the HTTP listener is actually bound to (set once at startup from settings). */
+let httpListenPort = 80;
 
 export interface WifiNetwork {
   ssid: string;
@@ -207,7 +209,7 @@ export async function startHotspot(): Promise<WifiResult> {
     // Start the in-process DNS responder (answers all queries with our IP)
     startCaptiveDns(hotspotIp);
 
-    // Redirect HTTP (80 → 3000) and DNS (53 → captive DNS port) on this interface
+    // Redirect HTTP (80 → api_port) and DNS (53 → captive DNS port) on this interface
     await ensureCaptivePortalRedirect(iface);
     await ensureDnsRedirect(iface);
 
@@ -315,6 +317,10 @@ export function isHotspotMode(): boolean {
   return hotspotActive;
 }
 
+export function setHttpListenPort(port: number): void {
+  httpListenPort = port;
+}
+
 async function detectInterfaceIp(iface: string): Promise<string> {
   try {
     await new Promise((r) => setTimeout(r, 1000));
@@ -338,20 +344,21 @@ async function ensureCaptivePortalDns(): Promise<void> {
 }
 
 async function ensureCaptivePortalRedirect(iface?: string): Promise<void> {
+  if (httpListenPort === 80) return;
   const ifPart = iface ? `-i ${iface} ` : "";
-  const rule = `${ifPart}-p tcp --dport 80 -j REDIRECT --to-port 3000`;
+  const rule = `${ifPart}-p tcp --dport 80 -j REDIRECT --to-port ${httpListenPort}`;
   try {
     await run(
       `sudo iptables -t nat -C PREROUTING ${rule} 2>/dev/null` +
       ` || sudo iptables -t nat -A PREROUTING ${rule}`
     );
-    console.log(`[wifi] Port 80 → 3000 redirect active${iface ? ` (${iface})` : ""}`);
+    console.log(`[wifi] Port 80 → ${httpListenPort} redirect active${iface ? ` (${iface})` : ""}`);
   } catch (err: any) {
     console.warn("[wifi] Could not set up HTTP redirect:", err.message);
   }
 }
 
-/** Ensures the global (all-interfaces) 80→3000 NAT rule — needed after captive handoff. */
+/** Ensures the global (all-interfaces) 80→api_port NAT rule — needed after captive handoff (no-op when api_port is 80). */
 export async function ensureGlobalPort80Redirect(): Promise<void> {
   await ensureCaptivePortalRedirect(undefined);
 }
@@ -392,7 +399,7 @@ async function removeAllNat443To(toPort: number): Promise<number> {
 }
 
 /**
- * Drops the old mistaken 443→3000 redirect (HTTPS must not hit the HTTP listener), then ensures
+ * Drops stale 443→api_port redirects (HTTPS must not hit the HTTP listener), then ensures
  * 443 → {@link getHttpsListenPort}. Runs on hub boot when HTTPS is enabled; also safe to call after WiFi handoff.
  */
 export async function syncHttpsLanPortForwarding(
@@ -404,10 +411,11 @@ export async function syncHttpsLanPortForwarding(
   try {
     const target = getHttpsListenPort(network);
 
-    const legacy = await removeAllNat443To(3000);
+    const httpPort = network.api_port;
+    const legacy = await removeAllNat443To(httpPort);
     if (legacy > 0) {
       console.log(
-        `[wifi] Removed legacy iptables 443 → 3000 (${legacy} rule(s)); HTTPS uses port ${target}`
+        `[wifi] Removed stale iptables 443 → ${httpPort} (${legacy} rule(s)); HTTPS uses port ${target}`
       );
     }
 
@@ -430,6 +438,7 @@ export async function syncHttpsLanPortForwarding(
 }
 
 async function removeCaptivePortalRedirect(): Promise<void> {
+  if (httpListenPort === 80) return;
   // Only remove the interface-specific rule that startHotspot() added.
   // The global rule (no -i flag) is installed by setup-linux.sh /
   // systemd and must stay so the hub is reachable on port 80 after
@@ -437,7 +446,7 @@ async function removeCaptivePortalRedirect(): Promise<void> {
   if (hotspotIface) {
     try {
       await run(
-        `sudo iptables -t nat -D PREROUTING -i ${hotspotIface} -p tcp --dport 80 -j REDIRECT --to-port 3000`
+        `sudo iptables -t nat -D PREROUTING -i ${hotspotIface} -p tcp --dport 80 -j REDIRECT --to-port ${httpListenPort}`
       );
     } catch {}
   }
