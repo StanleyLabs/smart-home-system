@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import type { Engine } from "../../core/engine.js";
 import type { SystemSettings } from "../../types.js";
 import { applyHostname } from "../../core/hostname.js";
+import { regenerateHubTlsCertificate } from "../../core/hub-tls-cert.js";
+import { syncHttpsLanPortForwarding } from "../../core/wifi-manager.js";
 import { requireRole } from "../auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,12 +37,60 @@ export function settingsRoutes(engine: Engine, settings: SystemSettings) {
 
     const body = await c.req.json();
     const oldHostname = settings.network.hostname;
+    const oldProtocol = settings.network.protocol;
+    let hubRestartRecommended = false;
+
+    if (section === "network") {
+      const merged = { ...settings.network, ...body } as SystemSettings["network"];
+      if (merged.protocol === "http") {
+        delete merged.tls;
+        delete merged.https_listen_port;
+        delete merged.public_url_port;
+      } else if (merged.protocol === "https") {
+        if (!merged.tls) {
+          merged.tls = { cert_path: "certs/hub.pem", key_path: "certs/hub.key" };
+        }
+        const api = merged.api_port ?? 3000;
+        merged.api_port = api;
+        if (merged.https_listen_port == null) merged.https_listen_port = api + 1;
+        if (api === 3000 && merged.public_url_port == null) merged.public_url_port = 443;
+      }
+      settings.network = merged;
+      saveSettings(settings);
+
+      const hostChanged = body.hostname != null && body.hostname !== oldHostname;
+      const protoChanged = body.protocol != null && body.protocol !== oldProtocol;
+
+      if (body.hostname && body.hostname !== oldHostname) {
+        await applyHostname(body.hostname);
+      }
+
+      if (settings.network.protocol === "https" && settings.network.tls) {
+        const needCert =
+          hostChanged ||
+          protoChanged ||
+          (oldProtocol !== "https" && settings.network.protocol === "https");
+        if (needCert) {
+          hubRestartRecommended = true;
+          try {
+            const r = await regenerateHubTlsCertificate(settings.network);
+            if (r.ok) console.log(`[settings] ${r.message}`);
+            else console.warn(`[settings] ${r.message}`);
+          } catch (err: any) {
+            console.error("[settings] TLS certificate generation failed:", err?.message || err);
+          }
+          await syncHttpsLanPortForwarding(settings.network);
+        }
+      }
+
+      return c.json({
+        ...settings.network,
+        __hub_restart_recommended: hubRestartRecommended,
+      });
+    }
+
     (settings as any)[section] = { ...(settings as any)[section], ...body };
     saveSettings(settings);
-
-    if (section === "network" && body.hostname && body.hostname !== oldHostname) {
-      await applyHostname(body.hostname);
-    }
 
     return c.json(settings[section]);
   });

@@ -17,23 +17,30 @@ KEY_FILE="hub.key"
 CERT_REL="certs/${CERT_FILE}"
 KEY_REL="certs/${KEY_FILE}"
 API_PORT=3000
+HOST_OVERRIDE=""
 FORCE=false
 SKIP_IPTABLES=false
 DRY_RUN=false
 
 usage() {
   echo "Usage: $0 [options]"
-  echo "  --api-port N   Plain HTTP / captive port (default: 3000). HTTPS uses N+1 unless set in config."
-  echo "  --force        Regenerate cert/key even if they already exist."
-  echo "  --no-iptables  Do not add or persist the 443 -> HTTPS listener NAT rule."
-  echo "  --dry-run      Print actions only; do not write files or run iptables."
-  echo "  -h, --help     Show this help."
+  echo "  --api-port N     Plain HTTP / captive port (default: 3000). HTTPS uses N+1 unless set in config."
+  echo "  --hostname NAME  Use this mDNS name for the cert SAN and update config (e.g. kitchen.local)."
+  echo "                   If omitted, uses network.hostname from config (default smarthome.local)."
+  echo "  --force          Regenerate cert/key even if they already exist."
+  echo "  --no-iptables    Do not add or persist the 443 -> HTTPS listener NAT rule."
+  echo "  --dry-run        Print actions only; do not write files or run iptables."
+  echo "  -h, --help       Show this help."
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --api-port)
       API_PORT="${2:?}"
+      shift 2
+      ;;
+    --hostname)
+      HOST_OVERRIDE="${2:?}"
       shift 2
       ;;
     --force) FORCE=true; shift ;;
@@ -60,7 +67,18 @@ if [ ! -f "$CONFIG_JSON" ]; then
   exit 1
 fi
 
-HOSTNAME="$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("network") or {}).get("hostname") or "homehub.local")' "$CONFIG_JSON")"
+if [ -n "$HOST_OVERRIDE" ]; then
+  HOSTNAME="$HOST_OVERRIDE"
+  case "$HOSTNAME" in
+    *.local) ;;
+    *) HOSTNAME="${HOSTNAME}.local" ;;
+  esac
+  HOST_SRC="--hostname flag"
+else
+  HOSTNAME="$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("network") or {}).get("hostname") or "smarthome.local")' "$CONFIG_JSON")"
+  HOST_SRC="config"
+fi
+
 SHORT="${HOSTNAME%.local}"
 
 if [ "$SHORT" != "$HOSTNAME" ]; then
@@ -71,7 +89,7 @@ fi
 
 echo "==> Hub HTTPS setup"
 echo "    Install dir:     $INSTALL_DIR"
-echo "    Hostname:        $HOSTNAME (from config)"
+echo "    Hostname:        $HOSTNAME ($HOST_SRC)"
 echo "    Cert SAN:        $SAN"
 echo "    HTTP (captive):  $API_PORT"
 echo "    HTTPS listener:  $HTTPS_LISTEN"
@@ -107,23 +125,31 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 chmod 600 "${CERT_DIR}/${KEY_FILE}"
 chmod 644 "${CERT_DIR}/${CERT_FILE}"
 
-echo "==> Updating ${CONFIG_JSON} (network.protocol, tls, ports)..."
-python3 - <<PY
+echo "==> Updating ${CONFIG_JSON} (network.protocol, tls, ports, hostname)..."
+export CONFIG_JSON_PATH="$CONFIG_JSON"
+export API_PORT="$API_PORT"
+export HTTPS_LISTEN="$HTTPS_LISTEN"
+export CERT_REL="$CERT_REL"
+export KEY_REL="$KEY_REL"
+export CERT_HOSTNAME="$HOSTNAME"
+python3 - <<'PY'
 import json
+import os
 from pathlib import Path
 
-path = Path("${CONFIG_JSON}")
-api_port = int("${API_PORT}")
-https_listen = int("${HTTPS_LISTEN}")
+path = Path(os.environ["CONFIG_JSON_PATH"])
+api_port = int(os.environ["API_PORT"])
+https_listen = int(os.environ["HTTPS_LISTEN"])
+cert_rel = os.environ["CERT_REL"]
+key_rel = os.environ["KEY_REL"]
+
 data = json.loads(path.read_text())
 net = data.setdefault("network", {})
 net["protocol"] = "https"
 net["api_port"] = api_port
 net["https_listen_port"] = https_listen
-net["tls"] = {
-    "cert_path": "${CERT_REL}",
-    "key_path": "${KEY_REL}",
-}
+net["hostname"] = os.environ["CERT_HOSTNAME"].strip()
+net["tls"] = {"cert_path": cert_rel, "key_path": key_rel}
 if api_port == 3000:
     net["public_url_port"] = 443
 else:

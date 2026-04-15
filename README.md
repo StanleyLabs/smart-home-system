@@ -18,11 +18,17 @@ The hub starts on **http://localhost:3000**. On first launch, you'll be guided t
 
 ### HTTPS on the LAN
 
-Mobile browsers only expose the camera on a **secure context** (HTTPS or `localhost`). On Ubuntu / Debian, after `./scripts/setup-linux.sh` you can enable TLS in one step:
+Mobile browsers only expose the camera on a **secure context** (HTTPS or `localhost`). The default mDNS name is **`smarthome.local`** (`config/system.json` → `network.hostname`).
+
+**From the dashboard (recommended):** open **Settings → Network**, set **Protocol** to **HTTPS**, save — the hub generates `certs/hub.pem` for the current hostname, syncs iptables, and reminds you to **restart** the hub process so the TLS listener loads. Switch back to **HTTP** to turn off TLS (paths are cleared from config). Changing **Hostname** while HTTPS is on regenerates the certificate.
+
+**From the shell** (Ubuntu / Debian, after `./scripts/setup-linux.sh`), you can still run:
 
 ```bash
 ./scripts/setup-https-linux.sh
 ```
+
+Use **`--hostname myhub.local`** to set the cert SAN and `network.hostname` in one step (optional if it already matches config).
 
 This script:
 

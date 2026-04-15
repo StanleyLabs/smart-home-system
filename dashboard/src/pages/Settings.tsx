@@ -38,8 +38,8 @@ const KNOWN_OPTIONS: Record<string, { label: string; value: string }[]> = {
     { label: 'Metric', value: 'metric' },
   ],
   'network.protocol': [
-    { label: 'HTTP', value: 'http' },
-    { label: 'HTTPS', value: 'https' },
+    { label: 'HTTP (no TLS)', value: 'http' },
+    { label: 'HTTPS (TLS, saved in config)', value: 'https' },
   ],
   'network.mqtt.websocket_protocol': [
     { label: 'WS', value: 'ws' },
@@ -289,7 +289,15 @@ export default function Settings() {
       setSaving(section);
       setSectionError((se) => ({ ...se, [section]: undefined }));
       try {
-        await api.put(`/settings/${section}`, data[section] ?? {});
+        const res = await api.put<Record<string, unknown>>(
+          `/settings/${section}`,
+          data[section] ?? {},
+        );
+        if (res.__hub_restart_recommended) {
+          window.alert(
+            'Restart the hub service so HTTPS listeners and certificates apply (e.g. sudo systemctl restart your smart-home unit, or stop and start npm start).',
+          );
+        }
         await load();
       } catch (e) {
         setSectionError((se) => ({
@@ -372,7 +380,7 @@ export default function Settings() {
             {SECTIONS.map((section) => {
               const isOpen = open === section;
               const sectionData = data[section] ?? {};
-              const keys = Object.keys(sectionData);
+              const keys = Object.keys(sectionData).filter((k) => !k.startsWith('__'));
               const err = sectionError[section];
               return (
                 <div

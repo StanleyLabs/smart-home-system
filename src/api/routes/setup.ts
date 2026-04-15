@@ -7,6 +7,7 @@ import { getDb } from "../../db/database.js";
 import type { Engine } from "../../core/engine.js";
 import { getBaseUrl, type SystemSettings } from "../../types.js";
 import { applyHostname } from "../../core/hostname.js";
+import { regenerateHubTlsCertificate } from "../../core/hub-tls-cert.js";
 import {
   connectToWifi,
   ensureGlobalPort80Redirect,
@@ -120,6 +121,15 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
 
+    if (stepNum === 4 && body.hostname && settings.network.protocol === "https" && settings.network.tls) {
+      try {
+        const r = await regenerateHubTlsCertificate(settings.network);
+        if (r.ok) console.log(`[setup] ${r.message}`);
+      } catch (e: any) {
+        console.error("[setup] TLS cert regenerate:", e?.message || e);
+      }
+    }
+
     return c.json({ step: stepNum, success: true, next_step: stepNum + 1 });
   });
 
@@ -132,6 +142,14 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
       settings.network.wifi = { ssid, configured: true };
     }
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
+
+    if (settings.network.protocol === "https" && settings.network.tls) {
+      void regenerateHubTlsCertificate(settings.network)
+        .then((r) => {
+          if (r.ok) console.log(`[setup/captive] ${r.message}`);
+        })
+        .catch((e) => console.error("[setup/captive] TLS cert:", e));
+    }
 
     // Respond immediately so the phone receives the response before we
     // tear down the hotspot.  The delayed task connects to WiFi (which
