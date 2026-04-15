@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { Html5Qrcode } from 'html5-qrcode';
+import { Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { api } from '../lib/api';
 import { subscribe } from '../lib/mqtt';
 import { setupPayloadIdentityKey } from '../lib/setup-payload-key';
@@ -111,7 +112,11 @@ function MatterQrScanner({
       setFileError(null);
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
-        const html5 = new Html5Qrcode(fileScanId, { verbose: false });
+        const html5 = new Html5Qrcode(fileScanId, {
+          verbose: false,
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        });
         try {
           const text = await html5.scanFile(file, false);
           const parsed = parseMatterQr(text);
@@ -135,17 +140,25 @@ function MatterQrScanner({
     if (phase !== 'loading') return;
 
     let cancelled = false;
+    /** No fixed aspectRatio — phone cameras are often 4:3; forcing 16:9 caused letterboxing. */
     const scanConfig = {
-      fps: 10,
-      qrbox: { width: 220, height: 220 },
-      aspectRatio: 1.777778,
+      fps: 15,
+      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+        const edge = Math.min(viewfinderWidth, viewfinderHeight);
+        const size = Math.max(140, Math.floor(Math.min(edge * 0.72, 320)));
+        return { width: size, height: size };
+      },
     };
 
     async function startCamera() {
       const { Html5Qrcode } = await import('html5-qrcode');
       if (cancelled) return;
 
-      const html5 = new Html5Qrcode(containerId, { verbose: false });
+      const html5 = new Html5Qrcode(containerId, {
+        verbose: false,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      });
       scannerRef.current = html5;
 
       const onDecoded = (decodedText: string) => {
@@ -264,8 +277,8 @@ function MatterQrScanner({
   }
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-black">
-      <div id={containerId} className="min-h-[240px] w-full [&_video]:max-h-[320px] [&_video]:w-full [&_video]:object-cover" />
+    <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]">
+      <div id={containerId} className="w-full" />
       {phase === 'loading' && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
