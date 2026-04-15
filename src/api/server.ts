@@ -128,17 +128,27 @@ export function startServer(
   const app = createServer(engine, settings);
   const port = settings.network.api_port;
   const tls = getTlsCredentials(settings.network);
+  /** Captive portals use plain HTTP (port 80 → api_port). TLS on this port would break hotspot detection. */
+  const useHttps = Boolean(tls) && !isHotspotMode();
 
   const server = serve({
     fetch: app.fetch,
     port,
-    ...(tls
+    ...(useHttps && tls
       ? {
           createServer: createHttpsServer,
           serverOptions: tls,
         }
       : {}),
   });
+
+  if (tls && !useHttps) {
+    console.warn(
+      "[api] Serving HTTP on port %s (WiFi hotspot / captive portal). " +
+        "After the hub joins your LAN WiFi, restart the process to enable HTTPS for browsers.",
+      port
+    );
+  }
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
