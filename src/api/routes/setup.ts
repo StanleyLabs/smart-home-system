@@ -158,10 +158,13 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
       }
     }, 3000);
 
+    const lanBase = getBaseUrl(settings.network);
     return c.json({
       success: true,
       hostname: `${resolvedHostname}.local`,
-      message: `Hub will connect to "${ssid}" and be available at ${getBaseUrl(settings.network)}`,
+      /** URL to open on the home LAN after reconnecting (HTTPS or HTTP per config — not hotspot IP). */
+      handoff_url: lanBase,
+      message: `Hub will connect to "${ssid}" and be available at ${lanBase}`,
     });
   });
 

@@ -377,19 +377,13 @@ function CaptiveSetup({
     setLoading(true);
     setError(null);
     try {
-      await api.post('/setup/captive', {
+      const res = await api.post<{ success: boolean; handoff_url?: string }>('/setup/captive', {
         ssid: selectedSsid.trim(),
         password: wifiPassword || undefined,
         hostname: hostname.trim(),
       });
       const resolved = hostname.trim().replace(/\.local$/, '') + '.local';
-      let url = `http://${resolved}/`;
-      try {
-        const st = await api.get<WifiStatus>('/system/wifi/status');
-        if (st.public_base_url) url = st.public_base_url;
-      } catch {
-        /* keep HTTP fallback */
-      }
+      const url = res.handoff_url ?? `http://${resolved}/`;
       setFinishUrl(url);
       setDone(true);
     } catch (e) {
