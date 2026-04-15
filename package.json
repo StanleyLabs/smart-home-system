@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "prebuild": "npm install --no-audit --no-fund --prefix dashboard",
     "build": "tsc && npm run build:dashboard",
     "build:hub": "tsc",
     "build:dashboard": "cd dashboard && npm run build",

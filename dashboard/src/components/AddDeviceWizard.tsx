@@ -136,7 +136,9 @@ function MatterQrScanner({
         if (cancelled) return;
         if (cameras.length > 0) {
           const preferred =
-            cameras.find((c) => /back|rear|environment/i.test(c.label)) ?? cameras[0];
+            cameras.find((c: { id: string; label: string }) =>
+              /back|rear|environment/i.test(c.label),
+            ) ?? cameras[0];
           await runStart(preferred.id);
         } else {
           await runStart({ facingMode: 'environment' });
