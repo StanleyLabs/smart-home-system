@@ -85,15 +85,21 @@ npm start
 
 ## Linux Setup (Ubuntu / Raspberry Pi / Jetson Nano)
 
-The hub runs natively on Linux ARM64 and x86_64. An automated setup script handles system dependencies:
+The hub runs natively on Linux ARM64 and x86_64. A single setup script handles everything — system dependencies, networking, permissions, and npm install:
 
 ```bash
-# Core setup (build tools, mDNS, Node.js)
+# One-time setup (run with sudo access)
 ./scripts/setup-linux.sh
 
 # With BLE support for Matter Bluetooth commissioning
 ./scripts/setup-linux.sh --ble
+
+# Build and run (no sudo needed after setup)
+npm run build
+npm start
 ```
+
+That's it. The setup script configures sudoers, iptables, captive portal DNS, and mDNS so `npm start` works without root.
 
 ### Prerequisites (installed by the script)
 
@@ -106,6 +112,18 @@ The hub runs natively on Linux ARM64 and x86_64. An automated setup script handl
 | `bluetooth`, `bluez`, `libbluetooth-dev` | BLE commissioning (optional, use `--ble`) |
 | Node.js 20+ | Runtime (installed via NodeSource if missing) |
 
+### Security Model
+
+The hub process never runs as root. A narrowly scoped sudoers file (installed by `setup-linux.sh`) allows exactly three commands without a password:
+
+| Command | Purpose |
+|---------|---------|
+| `iptables` | Toggle port 80 → 3000 redirect for captive portal |
+| `scripts/set-hostname.sh` | Apply mDNS hostname changes |
+| `scripts/install-captive-conf.sh` | Install captive portal DNS config |
+
+Everything else runs as the unprivileged `smarthub` user. The systemd service enforces additional hardening (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`).
+
 ### Running as a systemd Service
 
 A unit file is provided in `deploy/smart-home-system.service` for production use:
@@ -116,7 +134,7 @@ sudo useradd -r -s /usr/sbin/nologin smarthub
 
 # Copy the built project to /opt
 sudo mkdir -p /opt/smart-home-system
-sudo cp -r dist config data package.json node_modules /opt/smart-home-system/
+sudo cp -r dist scripts config data package.json node_modules /opt/smart-home-system/
 sudo chown -R smarthub:smarthub /opt/smart-home-system
 
 # Install and start the service
@@ -131,7 +149,7 @@ sudo journalctl -u smart-home-system -f
 
 ### First-Boot WiFi Onboarding
 
-When the hub boots with no network connection (no ethernet, no saved WiFi), it automatically creates an open WiFi hotspot named **Smart-Home-System**. Connect to it from your phone or laptop, then open `http://192.168.4.1` to access the setup wizard. During setup, you'll pick your home WiFi network and enter the password. The hub joins your network and tears down the hotspot — the whole process takes about two minutes.
+When the hub boots with no network connection (no ethernet, no saved WiFi), it automatically creates an open WiFi hotspot named **Smart-Home-System**. Connect to it from your phone or laptop — a captive portal popup will open the setup wizard automatically. During setup, you'll pick your home WiFi network and enter the password. The hub joins your network and tears down the hotspot — the whole process takes about two minutes.
 
 On macOS / Windows (development), the WiFi onboarding step is automatically skipped.
 

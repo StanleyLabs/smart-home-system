@@ -73,19 +73,23 @@ if command -v iptables-save &>/dev/null; then
   echo "    iptables rule persisted."
 fi
 
-echo "==> Configuring sudoers for hub service account..."
+echo "==> Configuring sudoers for hub process..."
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SUDOERS_FILE="/etc/sudoers.d/smarthub"
+CURRENT_USER="${SUDO_USER:-$USER}"
 sudo tee "$SUDOERS_FILE" > /dev/null <<SUDOERS
 # Smart Home System — allow the hub process to manage networking without full root.
 # Only these specific commands are permitted.
 smarthub ALL=(ALL) NOPASSWD: /usr/sbin/iptables
 smarthub ALL=(ALL) NOPASSWD: ${INSTALL_DIR}/scripts/set-hostname.sh *
 smarthub ALL=(ALL) NOPASSWD: ${INSTALL_DIR}/scripts/install-captive-conf.sh
+${CURRENT_USER} ALL=(ALL) NOPASSWD: /usr/sbin/iptables
+${CURRENT_USER} ALL=(ALL) NOPASSWD: ${INSTALL_DIR}/scripts/set-hostname.sh *
+${CURRENT_USER} ALL=(ALL) NOPASSWD: ${INSTALL_DIR}/scripts/install-captive-conf.sh
 SUDOERS
 sudo chmod 0440 "$SUDOERS_FILE"
 sudo visudo -c -f "$SUDOERS_FILE"
-echo "    Sudoers installed at $SUDOERS_FILE"
+echo "    Sudoers installed for users: smarthub, $CURRENT_USER"
 
 echo "==> Installing npm dependencies..."
 npm run setup
