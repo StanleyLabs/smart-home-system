@@ -15,6 +15,31 @@ interface DeviceRow {
   state: Record<string, unknown>;
 }
 
+/** Stored as plain strings (emoji / symbol); shown on scene cards and in this picker. */
+const SCENE_ICON_CHOICES: { value: string; label: string }[] = [
+  { value: '◆', label: 'Diamond' },
+  { value: '🏠', label: 'Home' },
+  { value: '☀️', label: 'Day' },
+  { value: '🌙', label: 'Night' },
+  { value: '💡', label: 'Lights' },
+  { value: '🛋️', label: 'Living room' },
+  { value: '🍳', label: 'Kitchen' },
+  { value: '🛏️', label: 'Bedroom' },
+  { value: '🎬', label: 'Movie' },
+  { value: '🌿', label: 'Relax' },
+  { value: '🔒', label: 'Away' },
+  { value: '🎉', label: 'Party' },
+  { value: '✨', label: 'Accent' },
+  { value: '🌅', label: 'Wake' },
+  { value: '🌆', label: 'Evening' },
+];
+
+const DEFAULT_SCENE_ICON = SCENE_ICON_CHOICES[0]!.value;
+
+function resolveSceneIcon(value: string): string {
+  return SCENE_ICON_CHOICES.some((c) => c.value === value) ? value : DEFAULT_SCENE_ICON;
+}
+
 export default function Scenes() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -23,13 +48,9 @@ export default function Scenes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createIcon, setCreateIcon] = useState('scene');
-  const [createSnapshot, setCreateSnapshot] = useState<Record<string, Record<string, unknown>>>({});
   const [captureName, setCaptureName] = useState('');
-  const [captureIcon, setCaptureIcon] = useState('scene');
+  const [captureIcon, setCaptureIcon] = useState(DEFAULT_SCENE_ICON);
   const [captureScope, setCaptureScope] = useState<'all' | 'room' | 'devices'>('all');
   const [captureDeviceIds, setCaptureDeviceIds] = useState<Set<string>>(new Set());
   const [captureRoomId, setCaptureRoomId] = useState('');
@@ -60,19 +81,6 @@ export default function Scenes() {
 
   const deviceCount = (s: Scene) => Object.keys(s.snapshot || {}).length;
 
-  const toggleDeviceInSnapshot = (deviceId: string, on: boolean) => {
-    setCreateSnapshot((prev) => {
-      const next = { ...prev };
-      if (on) {
-        const d = devices.find((x) => x.device_id === deviceId);
-        next[deviceId] = d?.state ? { ...d.state } : {};
-      } else {
-        delete next[deviceId];
-      }
-      return next;
-    });
-  };
-
   const activate = async (id: string) => {
     await api.post(`/scenes/${id}/activate`);
     load();
@@ -82,28 +90,6 @@ export default function Scenes() {
     if (!confirm('Delete this scene?')) return;
     await api.delete(`/scenes/${id}`);
     load();
-  };
-
-  const submitCreate = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.post('/scenes', {
-        name: createName,
-        icon: createIcon,
-        snapshot: createSnapshot,
-        transition_seconds: 0,
-      });
-      setCreateOpen(false);
-      setCreateName('');
-      setCreateIcon('scene');
-      setCreateSnapshot({});
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const submitCapture = async () => {
@@ -118,13 +104,13 @@ export default function Scenes() {
             : {};
       await api.post('/scenes/capture', {
         name: captureName,
-        icon: captureIcon,
+        icon: resolveSceneIcon(captureIcon),
         scope,
         transition_seconds: 0,
       });
       setCaptureOpen(false);
       setCaptureName('');
-      setCaptureIcon('scene');
+      setCaptureIcon(DEFAULT_SCENE_ICON);
       setCaptureScope('all');
       setCaptureDeviceIds(new Set());
       load();
@@ -139,25 +125,16 @@ export default function Scenes() {
     <div className="min-h-full p-6 text-[var(--text-primary)]">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Scenes</h1>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setCreateSnapshot({});
-              setCreateOpen(true);
-            }}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-          >
-            Create Scene
-          </button>
-          <button
-            type="button"
-            onClick={() => setCaptureOpen(true)}
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-active)]"
-          >
-            Capture Current
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setCaptureIcon((prev) => resolveSceneIcon(prev));
+            setCaptureOpen(true);
+          }}
+          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+        >
+          Create Scene
+        </button>
       </div>
 
       {error && (
@@ -210,68 +187,10 @@ export default function Scenes() {
         </div>
       )}
 
-      {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create Scene</h2>
-            <label className="mt-4 block text-base text-[var(--text-secondary)]">
-              Name
-              <input
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
-              />
-            </label>
-            <label className="mt-3 block text-base text-[var(--text-secondary)]">
-              Icon (name or emoji)
-              <input
-                value={createIcon}
-                onChange={(e) => setCreateIcon(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
-              />
-            </label>
-            <p className="mt-4 text-base font-medium text-[var(--text-secondary)]">Devices</p>
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
-              {devices.map((d) => (
-                <label
-                  key={d.device_id}
-                  className="flex cursor-pointer items-center gap-2 text-base"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!createSnapshot[d.device_id]}
-                    onChange={(e) => toggleDeviceInSnapshot(d.device_id, e.target.checked)}
-                  />
-                  <span className="text-[var(--text-primary)]">{d.name}</span>
-                  <span className="text-[var(--text-muted)]">{d.device_id}</span>
-                </label>
-              ))}
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCreateOpen(false)}
-                className="rounded-lg border border-[var(--border)] px-4 py-2 text-base text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saving || !createName.trim()}
-                onClick={submitCreate}
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-base font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {captureOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Capture Current</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create Scene</h2>
             <label className="mt-4 block text-base text-[var(--text-secondary)]">
               Name
               <input
@@ -282,13 +201,19 @@ export default function Scenes() {
             </label>
             <label className="mt-3 block text-base text-[var(--text-secondary)]">
               Icon
-              <input
-                value={captureIcon}
+              <select
+                value={resolveSceneIcon(captureIcon)}
                 onChange={(e) => setCaptureIcon(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
-              />
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)] select-chevron"
+              >
+                {SCENE_ICON_CHOICES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.value} {c.label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <p className="mt-4 text-base text-[var(--text-secondary)]">Scope</p>
+            <p className="mt-4 text-base text-[var(--text-secondary)]">Capturing…</p>
             <div className="mt-2 flex flex-wrap gap-4 text-base">
               <label className="flex items-center gap-2">
                 <input
