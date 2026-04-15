@@ -223,7 +223,7 @@ function CaptiveSetup() {
           </h1>
         </div>
 
-        <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-card)] p-8 shadow-2xl shadow-black/25 sm:p-10">
+        <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-2xl shadow-black/25 sm:p-8">
           <div className="flex flex-col items-center gap-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent)]/15">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -239,41 +239,39 @@ function CaptiveSetup() {
                 This hotspot will shut down in a few seconds.
               </p>
             </div>
+          </div>
 
-            <div className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] p-6 text-left">
-              <p className="mb-3 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
-              <ol className="list-decimal space-y-4 pl-5 text-[var(--text-primary)]">
-                <li className="pl-1">
-                  <strong>Copy the setup link below</strong> (this window may close when WiFi switches).
-                </li>
-                <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
-                <li className="pl-1">
-                  In <strong>Safari</strong> or <strong>Chrome</strong>, paste the link into the address bar. Don&rsquo;t open it in this sheet &mdash; the captive browser can&rsquo;t reach your hub.
-                </li>
-              </ol>
+          <div className="mt-8 w-full border-t border-[var(--border)] pt-8 text-left">
+            <p className="mb-3 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
+            <ol className="list-decimal space-y-4 pl-5 text-[var(--text-primary)]">
+              <li className="pl-1">
+                <strong>Copy the setup link below</strong> (this window may close when WiFi switches).
+              </li>
+              <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
+              <li className="pl-1">
+                In <strong>Safari</strong> or <strong>Chrome</strong>, paste the link into the address bar. Don&rsquo;t open it in this sheet &mdash; the captive browser can&rsquo;t reach your hub.
+              </li>
+            </ol>
 
-              <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
-                <p className="mb-2 text-center text-xs text-[var(--text-muted)]">
-                  Tap once to select, or use Copy
-                </p>
-                <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] py-1 text-center">
-                  <span
-                    className="inline-block cursor-text select-all whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)]"
-                    title={setupUrl}
-                  >
-                    {setupUrl}
-                  </span>
-                </div>
-                <div className="mt-3 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => void copySetupUrl()}
-                    className="w-full max-w-xs rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white touch-manipulation hover:bg-[var(--accent-hover)] sm:w-auto sm:min-w-[12rem]"
-                  >
-                    {urlCopied ? 'Copied' : 'Copy link'}
-                  </button>
-                </div>
-              </div>
+            <p className="mb-2 mt-6 text-center text-xs text-[var(--text-muted)]">
+              Tap once to select, or use Copy
+            </p>
+            <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] py-1 text-center">
+              <span
+                className="inline-block cursor-text select-all whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)]"
+                title={setupUrl}
+              >
+                {setupUrl}
+              </span>
+            </div>
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void copySetupUrl()}
+                className="w-full max-w-xs rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white touch-manipulation hover:bg-[var(--accent-hover)] sm:w-auto sm:min-w-[12rem]"
+              >
+                {urlCopied ? 'Copied' : 'Copy link'}
+              </button>
             </div>
           </div>
         </div>
