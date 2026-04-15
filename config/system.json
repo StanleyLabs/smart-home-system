@@ -1,10 +1,10 @@
 {
   "hub": {
-    "name": "Stanley Labs",
+    "name": "Natchez Home",
     "location": {
       "latitude": 35.926,
       "longitude": -86.8689,
-      "timezone": "Chicago"
+      "timezone": "America/Chicago"
     },
     "units": {
       "temperature": "fahrenheit",
@@ -28,20 +28,9 @@
     }
   },
   "protocols": {
-    "matter": {
-      "enabled": true,
-      "thread_channel": 25
-    },
-    "zigbee": {
-      "enabled": false,
-      "channel": 11,
-      "dongle_path": "/dev/ttyUSB0"
-    },
-    "zwave": {
-      "enabled": false,
-      "dongle_path": "/dev/ttyUSB1",
-      "region": "US"
-    }
+    "matter": true,
+    "zigbee": true,
+    "zwave": true
   },
   "automations": {
     "global_rate_limit_per_device": 10,

@@ -26,6 +26,9 @@ export function toCardDevice(d: HubDevice, onlineOverride?: boolean): DeviceCard
     name: d.name,
     online: onlineOverride ?? d.online,
     supports: d.supports,
+    manufacturer: d.manufacturer,
+    model: d.model,
+    protocol: d.protocol,
   };
 }
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { getDb } from "../../db/database.js";
 import type { Engine } from "../../core/engine.js";
-import type { User, Session } from "../../types.js";
+import type { User, UserPreferences, Session } from "../../types.js";
 import {
   hashPassword,
   hashPin,
@@ -11,10 +11,27 @@ import {
   createSession,
   revokeSession,
   getUserByUsername,
+  getUser,
   requireRole,
   checkPinLockout,
   recordFailedAttempt,
 } from "../auth.js";
+
+function mergeUserPreferences(
+  current: UserPreferences,
+  patch: Partial<UserPreferences>
+): UserPreferences {
+  return {
+    notifications: {
+      ...current.notifications,
+      ...(patch.notifications ?? {}),
+    },
+    dashboard: {
+      ...current.dashboard,
+      ...(patch.dashboard ?? {}),
+    },
+  };
+}
 
 export function userRoutes(engine: Engine) {
   const app = new Hono();
@@ -79,9 +96,30 @@ export function userRoutes(engine: Engine) {
       username: user.username,
       display_name: user.display_name,
       role: user.role,
-      notification_preferences: user.notification_preferences,
+      user_preferences: user.user_preferences,
       guest_config: user.guest_config,
     });
+  });
+
+  app.patch("/me", async (c) => {
+    const sessionUser = (c as any).get("user") as User;
+    if (!sessionUser) return c.json({ error: "Not authenticated" }, 401);
+    const body = await c.req.json();
+    const current = getUser(sessionUser.user_id);
+    if (!current) return c.json({ error: "User not found" }, 404);
+
+    const mergedPrefs = mergeUserPreferences(
+      current.user_preferences,
+      (body.user_preferences ?? {}) as Partial<UserPreferences>
+    );
+
+    const db = getDb();
+    db.prepare("UPDATE users SET user_preferences = ? WHERE user_id = ?").run(
+      JSON.stringify(mergedPrefs),
+      sessionUser.user_id
+    );
+
+    return c.json({ user_preferences: mergedPrefs });
   });
 
   app.get("/", requireRole("admin"), (c) => {
@@ -106,8 +144,9 @@ export function userRoutes(engine: Engine) {
     const pin_hash = await hashPin(body.pin);
     const password_hash = body.password ? await hashPassword(body.password) : null;
 
+    const defaultPrefs: UserPreferences = { notifications: {}, dashboard: {} };
     db.prepare(
-      `INSERT INTO users (user_id, username, display_name, role, password_hash, pin_hash, guest_config, notification_preferences, created_at)
+      `INSERT INTO users (user_id, username, display_name, role, password_hash, pin_hash, guest_config, user_preferences, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       user_id,
@@ -117,7 +156,7 @@ export function userRoutes(engine: Engine) {
       password_hash,
       pin_hash,
       body.guest_config ? JSON.stringify(body.guest_config) : null,
-      JSON.stringify(body.notification_preferences || {}),
+      JSON.stringify(body.user_preferences ?? defaultPrefs),
       new Date().toISOString()
     );
 
@@ -127,6 +166,7 @@ export function userRoutes(engine: Engine) {
   app.put("/:id", requireRole("admin"), async (c) => {
     const db = getDb();
     const userId = c.req.param("id");
+    if (!userId) return c.json({ error: "Missing id" }, 400);
     const body = await c.req.json();
 
     if (body.display_name) {
@@ -138,9 +178,13 @@ export function userRoutes(engine: Engine) {
     if (body.role) {
       db.prepare("UPDATE users SET role = ? WHERE user_id = ?").run(body.role, userId);
     }
-    if (body.notification_preferences) {
-      db.prepare("UPDATE users SET notification_preferences = ? WHERE user_id = ?").run(
-        JSON.stringify(body.notification_preferences),
+    if (body.user_preferences) {
+      const u = getUser(userId);
+      const merged = u
+        ? mergeUserPreferences(u.user_preferences, body.user_preferences as Partial<UserPreferences>)
+        : (body.user_preferences as UserPreferences);
+      db.prepare("UPDATE users SET user_preferences = ? WHERE user_id = ?").run(
+        JSON.stringify(merged),
         userId
       );
     }

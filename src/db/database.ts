@@ -98,7 +98,7 @@ function initSchema(db: Database.Database) {
       password_hash TEXT,
       pin_hash TEXT NOT NULL,
       guest_config TEXT,
-      notification_preferences TEXT NOT NULL DEFAULT '{}',
+      user_preferences TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL
     );
 
@@ -145,6 +145,11 @@ function initSchema(db: Database.Database) {
       saturation INTEGER NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS floor_order (
+      floor_name TEXT PRIMARY KEY,
+      sort_index INTEGER NOT NULL DEFAULT 0
     );
   `);
 }

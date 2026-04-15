@@ -43,5 +43,14 @@ export function automationRoutes(engine: Engine) {
     return c.json(updated);
   });
 
+  app.post("/:id/run", requireRole("admin", "member"), async (c) => {
+    const id = c.req.param("id")!;
+    const result = await engine.automations.runManually(id);
+    if (result === "not_found") return c.json({ error: "Not found" }, 404);
+    if (result === "already_running")
+      return c.json({ error: "Automation is already running" }, 409);
+    return c.json({ success: true });
+  });
+
   return app;
 }

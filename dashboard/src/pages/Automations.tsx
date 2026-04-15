@@ -43,6 +43,10 @@ export default function Automations() {
   const [saving, setSaving] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  const [deleteTarget, setDeleteTarget] = useState<AutomationRule | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [runningId, setRunningId] = useState<string | null>(null);
+
   const load = () => {
     setLoading(true);
     setError(null);
@@ -195,14 +199,30 @@ export default function Automations() {
     }
   };
 
-  const deleteRule = async (id: string) => {
-    if (!confirm('Delete this automation?')) return;
+  const runRule = async (id: string) => {
+    setError(null);
+    setRunningId(id);
+    try {
+      await api.post<{ success: boolean }>(`/automations/${id}/run`, {});
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to run automation');
+    } finally {
+      setRunningId(null);
+    }
+  };
+
+  const confirmDeleteAutomation = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
     setError(null);
     try {
-      await api.delete(`/automations/${id}`);
+      await api.delete(`/automations/${deleteTarget.rule_id}`);
+      setDeleteTarget(null);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Failed to delete automation');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -262,7 +282,7 @@ export default function Automations() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => deleteRule(r.rule_id)}
+                  onClick={() => setDeleteTarget(r)}
                   title="Delete automation"
                   className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
                 >
@@ -274,6 +294,15 @@ export default function Automations() {
                   <span className="text-sm font-medium text-[var(--text-primary)]">
                     {r.name || '(unnamed)'}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => runRule(r.rule_id)}
+                    disabled={runningId === r.rule_id}
+                    title="Run all actions now (ignores trigger and conditions)"
+                    className="rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-glow)] hover:text-[var(--accent)] disabled:opacity-50"
+                  >
+                    {runningId === r.rule_id ? 'Running…' : 'Run now'}
+                  </button>
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
@@ -845,6 +874,45 @@ export default function Automations() {
                 className="rounded-lg bg-[var(--accent)] px-4 py-2 text-base font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40"
               >
                 {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-automation-title"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-automation-title" className="text-lg font-semibold text-[var(--text-primary)]">
+              Delete automation
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              Delete &ldquo;{deleteTarget.name.trim() || '(unnamed)'}&rdquo;? This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void confirmDeleteAutomation()}
+                className="rounded-lg bg-[var(--danger)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

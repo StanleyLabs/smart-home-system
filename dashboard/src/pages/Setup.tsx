@@ -1038,7 +1038,7 @@ export default function Setup() {
                   <li key={`${r.name}-${r.floor}-${index}`} className="flex items-center justify-between gap-3 text-[var(--text-primary)]">
                     <span className="min-w-0 flex-1">
                       {r.name}
-                      <span className="ml-2 text-sm text-[var(--text-muted)]">Floor {r.floor}</span>
+                      <span className="ml-2 text-sm text-[var(--text-muted)]">{r.floor}</span>
                     </span>
                     <button
                       type="button"
@@ -1088,10 +1088,6 @@ export default function Setup() {
                 <dt className="text-[var(--text-muted)]">Temperature</dt>
                 <dd className="text-right font-medium text-[var(--text-primary)]">&deg;{tempUnit}</dd>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-[var(--text-muted)]">Protocols</dt>
-                <dd className="text-right font-medium text-[var(--success)]">Matter, Zigbee, Z-Wave</dd>
-              </div>
               <div className="border-t border-[var(--border)] pt-4">
                 <dt className="mb-2 text-[var(--text-muted)]">Rooms</dt>
                 <dd className="text-[var(--text-primary)]">
@@ -1100,7 +1096,7 @@ export default function Setup() {
                   ) : (
                     <ul className="list-inside list-disc space-y-1">
                       {rooms.map((r) => (
-                        <li key={`${r.name}-${r.floor}`}>{r.name} <span className="text-[var(--text-muted)]">(floor {r.floor})</span></li>
+                        <li key={`${r.name}-${r.floor}`}>{r.name} <span className="text-[var(--text-muted)]">({r.floor})</span></li>
                       ))}
                     </ul>
                   )}

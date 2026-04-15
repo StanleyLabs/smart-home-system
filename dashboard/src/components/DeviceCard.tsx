@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type SyntheticEvent } from 'react';
+import { DeviceInfoDialog } from './DeviceInfoDialog';
 import { ColorPicker } from './ColorPicker';
 import { hsToCss } from '../lib/color-hs';
 import { Slider } from './Slider';
@@ -25,6 +26,9 @@ export type DeviceCardDevice = {
   name: string;
   online: boolean;
   supports?: string[];
+  manufacturer?: string;
+  model?: string;
+  protocol?: string;
 };
 
 type DeviceCardProps = {
@@ -302,10 +306,16 @@ function LightSliders({ show, supports, brightness, colorTemp, muted, onCommand 
 
 const THERM_MODES = ['heat', 'cool', 'auto', 'off'] as const;
 
+/** Prevent card background click from opening device info when using inner controls. */
+function stopDeviceInfoClick(e: SyntheticEvent) {
+  e.stopPropagation();
+}
+
 /* ── Component ────────────────────────────────────────────────────── */
 
 function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [deviceInfoOpen, setDeviceInfoOpen] = useState(false);
   const { online } = device;
   const muted = !online;
   const supports = device.supports ?? [];
@@ -338,48 +348,64 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
     device.device_type === 'fan';
 
   if (compact) {
-    return (
-      <div
-        data-device-id={device.device_id}
-        className={[
-          'rounded-xl border bg-[var(--bg-card)] px-3 py-2.5 transition-colors',
-          muted ? 'opacity-50' : '',
-          cardBorder(device.device_type, state, online),
-        ].join(' ')}
-      >
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <h3 className="truncate text-xs font-medium text-[var(--text-primary)]">
-                {device.name}
-              </h3>
-              <span
-                className={[
-                  'h-1.5 w-1.5 shrink-0 rounded-full',
-                  online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
-                ].join(' ')}
-                title={online ? 'Online' : 'Offline'}
-              />
-              {battery != null && <StatusBadge type="battery" value={battery} />}
-            </div>
-            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-              {primaryLine(device, state)}
-            </p>
+    const cardClass = [
+      'rounded-xl border bg-[var(--bg-card)] px-3 py-2.5 transition-colors',
+      muted ? 'opacity-50' : '',
+      cardBorder(device.device_type, state, online),
+      'w-full cursor-pointer text-left font-inherit hover:bg-[var(--bg-card-active)]/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]',
+    ].join(' ');
+
+    const inner = (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="truncate text-xs font-medium text-[var(--text-primary)]">
+              {device.name}
+            </h3>
+            <span
+              className={[
+                'h-1.5 w-1.5 shrink-0 rounded-full',
+                online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
+              ].join(' ')}
+              title={online ? 'Online' : 'Offline'}
+            />
+            {battery != null && <StatusBadge type="battery" value={battery} />}
           </div>
+          <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+            {primaryLine(device, state)}
+          </p>
         </div>
       </div>
     );
+
+    return (
+      <>
+        <button
+          type="button"
+          data-device-id={device.device_id}
+          className={cardClass}
+          onClick={() => setDeviceInfoOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={deviceInfoOpen}
+        >
+          {inner}
+        </button>
+        {deviceInfoOpen && (
+          <DeviceInfoDialog device={device} state={state} onClose={() => setDeviceInfoOpen(false)} />
+        )}
+      </>
+    );
   }
 
-  return (
-    <div
-      data-device-id={device.device_id}
-      className={[
-        'rounded-xl border bg-[var(--bg-card)] p-3 transition-colors h-44',
-        muted ? 'opacity-50' : '',
-        cardBorder(device.device_type, state, online),
-      ].join(' ')}
-    >
+  const fullCardClass = [
+    'rounded-xl border bg-[var(--bg-card)] p-4 transition-colors h-48',
+    muted ? 'opacity-50' : '',
+    cardBorder(device.device_type, state, online),
+    'w-full cursor-pointer text-left font-inherit hover:bg-[var(--bg-card-active)]/20',
+  ].join(' ');
+
+  const fullCardInner = (
+    <>
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -406,7 +432,10 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           <button
             type="button"
             disabled={muted}
-            onClick={() => setColorPickerOpen(true)}
+            onClick={(e) => {
+              stopDeviceInfoClick(e);
+              setColorPickerOpen(true);
+            }}
             aria-label="Change color"
             className={[
               'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[var(--border)] transition-transform hover:scale-110',
@@ -420,7 +449,10 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           <button
             type="button"
             disabled={muted}
-            onClick={() => onCommand('set', { on: !on })}
+            onClick={(e) => {
+              stopDeviceInfoClick(e);
+              onCommand('set', { on: !on });
+            }}
             aria-label={on ? 'Turn off' : 'Turn on'}
             className={[
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors',
@@ -441,7 +473,10 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           <button
             type="button"
             disabled={muted}
-            onClick={() => onCommand('set', { locked: !locked })}
+            onClick={(e) => {
+              stopDeviceInfoClick(e);
+              onCommand('set', { locked: !locked });
+            }}
             aria-label={locked ? 'Unlock' : 'Lock'}
             className={[
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors',
@@ -459,7 +494,10 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           <button
             type="button"
             disabled={muted}
-            onClick={() => onCommand('set', { open: !bool(state, 'open') })}
+            onClick={(e) => {
+              stopDeviceInfoClick(e);
+              onCommand('set', { open: !bool(state, 'open') });
+            }}
             aria-label={bool(state, 'open') ? 'Close garage door' : 'Open garage door'}
             className={[
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors',
@@ -477,7 +515,9 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
       </div>
 
       {/* ── Light controls ─────────────────────────────────────── */}
-      <LightSliders show={hasLightSliders} supports={supports} brightness={brightness} colorTemp={colorTemp} muted={muted} onCommand={onCommand} />
+      <div onClick={stopDeviceInfoClick} onPointerDown={stopDeviceInfoClick}>
+        <LightSliders show={hasLightSliders} supports={supports} brightness={brightness} colorTemp={colorTemp} muted={muted} onCommand={onCommand} />
+      </div>
 
       {/* ── Switch info ────────────────────────────────────────── */}
       {device.device_type === 'switch' && powerDraw != null && (
@@ -495,7 +535,11 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
 
       {/* ── Thermostat ─────────────────────────────────────────── */}
       {device.device_type === 'thermostat' && (
-        <div className="mt-3 space-y-3">
+        <div
+          className="mt-3 space-y-3"
+          onClick={stopDeviceInfoClick}
+          onPointerDown={stopDeviceInfoClick}
+        >
           <div className="flex flex-wrap gap-1">
             {THERM_MODES.map((m) => (
               <button
@@ -573,7 +617,11 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
 
       {/* ── Blinds ─────────────────────────────────────────────── */}
       {device.device_type === 'blinds' && (
-        <div className="mt-3 space-y-2">
+        <div
+          className="mt-3 space-y-2"
+          onClick={stopDeviceInfoClick}
+          onPointerDown={stopDeviceInfoClick}
+        >
           <Slider
             label="Position"
             unit="%"
@@ -599,7 +647,11 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
 
       {/* ── Camera ─────────────────────────────────────────────── */}
       {device.device_type === 'camera' && (
-        <div className="mt-3 space-y-2 text-sm">
+        <div
+          className="mt-3 space-y-2 text-sm"
+          onClick={stopDeviceInfoClick}
+          onPointerDown={stopDeviceInfoClick}
+        >
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--text-muted)]">Recording</span>
             <Toggle
@@ -636,7 +688,11 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
 
       {/* ── Fan controls ───────────────────────────────────────── */}
       {device.device_type === 'fan' && supports.includes('speed') && (
-        <div className="mt-3">
+        <div
+          className="mt-3"
+          onClick={stopDeviceInfoClick}
+          onPointerDown={stopDeviceInfoClick}
+        >
           <Slider
             label="Speed"
             unit=""
@@ -674,8 +730,21 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           <span>Last ring: {formatLast(state.last_ring)}</span>
         </div>
       )}
+    </>
+  );
 
-      {/* ── Color picker modal ─────────────────────────────────── */}
+  return (
+    <>
+      <div
+        data-device-id={device.device_id}
+        className={fullCardClass}
+        onClick={() => setDeviceInfoOpen(true)}
+      >
+        {fullCardInner}
+      </div>
+      {deviceInfoOpen && (
+        <DeviceInfoDialog device={device} state={state} onClose={() => setDeviceInfoOpen(false)} />
+      )}
       {colorPickerOpen && (
         <ColorPicker
           hue={colorHue}
@@ -686,7 +755,7 @@ function DeviceCard({ device, state, onCommand, compact }: DeviceCardProps) {
           onClose={() => setColorPickerOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 

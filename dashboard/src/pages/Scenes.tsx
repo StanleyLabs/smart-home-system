@@ -59,6 +59,9 @@ export default function Scenes() {
   const [captureRoomId, setCaptureRoomId] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [deleteScene, setDeleteScene] = useState<Scene | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   const load = () => {
     setLoading(true);
     setError(null);
@@ -89,10 +92,19 @@ export default function Scenes() {
     load();
   };
 
-  const remove = async (id: string) => {
-    if (!confirm('Delete this scene?')) return;
-    await api.delete(`/scenes/${id}`);
-    load();
+  const confirmDeleteScene = async () => {
+    if (!deleteScene) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await api.delete(`/scenes/${deleteScene.scene_id}`);
+      setDeleteScene(null);
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete scene');
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const submitCapture = async () => {
@@ -176,7 +188,7 @@ export default function Scenes() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => remove(s.scene_id)}
+                    onClick={() => setDeleteScene(s)}
                     className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--danger)] hover:bg-[var(--bg-card-active)]"
                   >
                     Delete
@@ -185,6 +197,45 @@ export default function Scenes() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {deleteScene && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-scene-title"
+          onClick={() => setDeleteScene(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-scene-title" className="text-lg font-semibold text-[var(--text-primary)]">
+              Delete scene
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              Delete &ldquo;{deleteScene.name}&rdquo;? This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteScene(null)}
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void confirmDeleteScene()}
+                className="rounded-lg bg-[var(--danger)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

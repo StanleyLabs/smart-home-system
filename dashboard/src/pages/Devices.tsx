@@ -7,8 +7,10 @@ import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
 import AddDeviceWizard from '../components/AddDeviceWizard';
+import { DeviceInfoDialog } from '../components/DeviceInfoDialog';
 import { PencilIcon, TrashIcon } from '../components/action-icons';
 import SetupQueuePanel from '../components/SetupQueuePanel';
+import { mergedState, toCardDevice } from '../lib/device-card-bridge';
 
 /* ── Device type labels & icons ────────────────────────────────────── */
 
@@ -294,11 +296,13 @@ export default function Devices() {
 
   const [editDevice, setEditDevice] = useState<HubDevice | null>(null);
   const [deleteDevice, setDeleteDevice] = useState<HubDevice | null>(null);
+  const [infoDevice, setInfoDevice] = useState<HubDevice | null>(null);
 
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   const availability = useDeviceStore((s) => s.availability);
+  const deviceStates = useDeviceStore((s) => s.states);
 
   const roomMap = new Map(rooms.map((r) => [r.room_id, r.name]));
 
@@ -436,18 +440,34 @@ export default function Devices() {
       {/* ── Device list ────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
         {/* Header row */}
-        <div className="hidden items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-card-active)] px-4 py-2.5 text-xs font-medium text-[var(--text-muted)] sm:flex">
-          <span className="w-6" />
-          <button type="button" onClick={() => toggleSort('name')} className="flex flex-1 items-center gap-0.5 hover:text-[var(--text-primary)]">
+        <div className="hidden items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-card-active)] px-4 py-2.5 text-left text-xs font-medium text-[var(--text-muted)] sm:flex">
+          <span className="w-6 shrink-0" />
+          <button
+            type="button"
+            onClick={() => toggleSort('name')}
+            className="flex min-w-0 flex-1 items-center justify-start gap-0.5 text-left hover:text-[var(--text-primary)]"
+          >
             Name <SortArrow dir={sortDir} active={sortKey === 'name'} />
           </button>
-          <button type="button" onClick={() => toggleSort('type')} className="flex w-28 items-center gap-0.5 hover:text-[var(--text-primary)]">
+          <button
+            type="button"
+            onClick={() => toggleSort('type')}
+            className="flex w-28 shrink-0 items-center justify-start gap-0.5 text-left hover:text-[var(--text-primary)]"
+          >
             Type <SortArrow dir={sortDir} active={sortKey === 'type'} />
           </button>
-          <button type="button" onClick={() => toggleSort('room')} className="flex w-28 items-center gap-0.5 hover:text-[var(--text-primary)]">
+          <button
+            type="button"
+            onClick={() => toggleSort('room')}
+            className="flex w-28 shrink-0 items-center justify-start gap-0.5 text-left hover:text-[var(--text-primary)]"
+          >
             Room <SortArrow dir={sortDir} active={sortKey === 'room'} />
           </button>
-          <button type="button" onClick={() => toggleSort('status')} className="flex w-20 items-center justify-center gap-0.5 hover:text-[var(--text-primary)]">
+          <button
+            type="button"
+            onClick={() => toggleSort('status')}
+            className="flex w-20 shrink-0 items-center justify-start gap-0.5 text-left hover:text-[var(--text-primary)]"
+          >
             Status <SortArrow dir={sortDir} active={sortKey === 'status'} />
           </button>
         </div>
@@ -469,15 +489,20 @@ export default function Devices() {
           return (
             <div
               key={d.device_id}
+              onClick={() => setInfoDevice(d)}
               className={[
-                'relative border-b border-[var(--border)] px-4 py-3',
+                'relative border-b border-[var(--border)] px-4 py-3 text-left transition-colors hover:bg-[var(--bg-card-active)]/35',
                 i === sortedDevices.length - 1 ? 'border-b-0' : '',
+                'cursor-pointer',
               ].join(' ')}
             >
               <div className="absolute right-2 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 sm:right-3">
                 <button
                   type="button"
-                  onClick={() => setEditDevice(d)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditDevice(d);
+                  }}
                   title="Edit device"
                   className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
                 >
@@ -486,7 +511,10 @@ export default function Devices() {
                 {isAdmin && (
                   <button
                     type="button"
-                    onClick={() => setDeleteDevice(d)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteDevice(d);
+                    }}
                     title="Delete device"
                     className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
                   >
@@ -533,7 +561,7 @@ export default function Devices() {
                 </span>
 
                 {/* Status */}
-                <div className="hidden w-20 sm:flex justify-center">
+                <div className="hidden w-20 shrink-0 sm:flex sm:justify-start">
                   <span
                     className={[
                       'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
@@ -588,6 +616,19 @@ export default function Devices() {
           device={deleteDevice}
           onConfirm={handleDelete}
           onClose={() => setDeleteDevice(null)}
+        />
+      )}
+
+      {infoDevice && (
+        <DeviceInfoDialog
+          device={toCardDevice(
+            infoDevice,
+            availability[infoDevice.device_id] !== undefined
+              ? availability[infoDevice.device_id]
+              : infoDevice.online,
+          )}
+          state={mergedState(infoDevice, deviceStates[infoDevice.device_id])}
+          onClose={() => setInfoDevice(null)}
         />
       )}
 

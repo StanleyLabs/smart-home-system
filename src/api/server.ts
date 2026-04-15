@@ -28,6 +28,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { systemRoutes } from "./routes/system.js";
 import { setupQueueRoutes } from "./routes/setup-queue.js";
 import { colorPresetRoutes } from "./routes/color-presets.js";
+import { floorRoutes } from "./routes/floors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_DIR = path.resolve(__dirname, "../../dashboard/dist");
@@ -84,7 +85,7 @@ export function createServer(engine: Engine, settings: SystemSettings) {
 
   app.use("*", cors({
     origin: "*",
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowHeaders: ["Content-Type", "Authorization"],
   }));
 
@@ -103,6 +104,7 @@ export function createServer(engine: Engine, settings: SystemSettings) {
   app.route("/api/system", systemRoutes(engine, settings));
   app.route("/api/setup-queue", setupQueueRoutes(engine));
   app.route("/api/color-presets", colorPresetRoutes(engine));
+  app.route("/api/floors", floorRoutes(engine));
 
   app.get("/assets/*", async (c) => {
     const filePath = path.join(DASHBOARD_DIR, c.req.path);

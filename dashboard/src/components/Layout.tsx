@@ -104,8 +104,8 @@ export function Layout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-full flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] md:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)] md:flex">
+    <div className="flex h-dvh min-h-0 max-h-dvh flex-col overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)] md:flex-row">
+      <aside className="hidden min-h-0 w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)] md:flex md:h-full">
         <div className="border-b border-[var(--border)] px-4 py-4 text-lg font-semibold tracking-tight">
           {hubName}
         </div>

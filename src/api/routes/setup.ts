@@ -72,8 +72,8 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         const user_id = `user_${uuid().slice(0, 8)}`;
 
         db.prepare(
-          `INSERT OR REPLACE INTO users (user_id, username, display_name, role, password_hash, pin_hash, notification_preferences, created_at)
-           VALUES (?, ?, ?, 'admin', ?, ?, '{}', ?)`
+          `INSERT OR REPLACE INTO users (user_id, username, display_name, role, password_hash, pin_hash, user_preferences, created_at)
+           VALUES (?, ?, ?, 'admin', ?, ?, '{"notifications":{},"dashboard":{}}', ?)`
         ).run(user_id, username, display_name || username, password_hash, pin_hash, new Date().toISOString());
         break;
       }

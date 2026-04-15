@@ -198,6 +198,15 @@ export interface Notification {
   group_count?: number;
 }
 
+/** Per-user JSON stored in `users.user_preferences`. */
+export interface UserPreferences {
+  notifications: Record<string, unknown>;
+  dashboard: {
+    home_room_order?: string[];
+    [key: string]: unknown;
+  };
+}
+
 export interface User {
   user_id: string;
   username: string;
@@ -209,7 +218,7 @@ export interface User {
     allowed_rooms?: string[];
     expires_at?: string;
   } | null;
-  notification_preferences: Record<string, any>;
+  user_preferences: UserPreferences;
   created_at: string;
 }
 

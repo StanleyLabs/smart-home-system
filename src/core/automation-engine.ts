@@ -129,6 +129,21 @@ export class AutomationEngine {
     return this.rules.delete(ruleId);
   }
 
+  /**
+   * Run all actions immediately. Skips trigger, conditions, and retrigger cooldown.
+   * Works even when the rule is disabled (explicit manual run).
+   */
+  async runManually(
+    ruleId: string,
+  ): Promise<"ok" | "not_found" | "already_running"> {
+    const rule = this.rules.get(ruleId);
+    if (!rule) return "not_found";
+    if (this.runningRules.has(ruleId)) return "already_running";
+    this.lastTriggered.set(ruleId, Date.now());
+    await this.executeActions(rule);
+    return "ok";
+  }
+
   onDeviceStateChange(deviceId: string, property: string, value: any) {
     for (const rule of this.rules.values()) {
       if (!rule.enabled) continue;

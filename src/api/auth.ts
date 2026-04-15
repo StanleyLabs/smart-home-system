@@ -2,7 +2,7 @@ import { getDb } from "../db/database.js";
 import bcrypt from "bcrypt";
 import { v4 as uuid } from "uuid";
 import type { Context, Next } from "hono";
-import type { User, Session, SystemSettings } from "../types.js";
+import type { User, UserPreferences, Session, SystemSettings } from "../types.js";
 
 const SALT_ROUNDS = 10;
 
@@ -78,6 +78,28 @@ export function revokeSession(token: string) {
   db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
 }
 
+function parseUserPreferences(json: string): UserPreferences {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json || "{}");
+  } catch {
+    raw = {};
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { notifications: {}, dashboard: {} };
+  }
+  const o = raw as Record<string, unknown>;
+  const notifications =
+    o.notifications && typeof o.notifications === "object" && !Array.isArray(o.notifications)
+      ? (o.notifications as Record<string, unknown>)
+      : {};
+  const dashboard =
+    o.dashboard && typeof o.dashboard === "object" && !Array.isArray(o.dashboard)
+      ? (o.dashboard as Record<string, unknown>)
+      : {};
+  return { notifications, dashboard };
+}
+
 export function getUser(userId: string): User | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM users WHERE user_id = ?").get(userId) as any;
@@ -85,7 +107,7 @@ export function getUser(userId: string): User | null {
   return {
     ...row,
     guest_config: row.guest_config ? JSON.parse(row.guest_config) : null,
-    notification_preferences: JSON.parse(row.notification_preferences || "{}"),
+    user_preferences: parseUserPreferences(row.user_preferences || "{}"),
   };
 }
 
@@ -96,7 +118,7 @@ export function getUserByUsername(username: string): User | null {
   return {
     ...row,
     guest_config: row.guest_config ? JSON.parse(row.guest_config) : null,
-    notification_preferences: JSON.parse(row.notification_preferences || "{}"),
+    user_preferences: parseUserPreferences(row.user_preferences || "{}"),
   };
 }
 
