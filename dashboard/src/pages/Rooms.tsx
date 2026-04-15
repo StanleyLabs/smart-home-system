@@ -1,61 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import type { Room, HubDevice } from '../lib/hub-types';
+import { toCardDevice, mergedState } from '../lib/device-card-bridge';
+import { useDeviceCommand } from '../hooks/use-device-command';
+import { InlineError } from '../components/InlineError';
+import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
 import { PencilIcon, TrashIcon } from '../components/action-icons';
-import DeviceCard, { type DeviceCardDevice } from '../components/DeviceCard';
-
-type Room = {
-  room_id: string;
-  name: string;
-  floor: string;
-};
-
-type HubDevice = {
-  device_id: string;
-  device_type: string;
-  protocol: string;
-  name: string;
-  room_id: string | null;
-  online: boolean;
-  supports?: string[];
-  state: Record<string, unknown>;
-};
-
-function toCardDevice(d: HubDevice, onlineOverride?: boolean): DeviceCardDevice {
-  const allowed: DeviceCardDevice['device_type'][] = [
-    'light',
-    'switch',
-    'lock',
-    'thermostat',
-    'contact_sensor',
-    'motion_sensor',
-    'environment_sensor',
-    'blinds',
-    'camera',
-    'fan',
-    'garage_door',
-    'doorbell',
-  ];
-  const dt = allowed.includes(d.device_type as DeviceCardDevice['device_type'])
-    ? (d.device_type as DeviceCardDevice['device_type'])
-    : 'light';
-  return {
-    device_id: d.device_id,
-    device_type: dt,
-    name: d.name,
-    online: onlineOverride ?? d.online,
-    supports: d.supports,
-  };
-}
-
-function mergedState(
-  device: HubDevice,
-  storeSlice: Record<string, unknown> | undefined
-): Record<string, unknown> {
-  return { ...(device.state ?? {}), ...(storeSlice ?? {}) };
-}
+import DeviceCard from '../components/DeviceCard';
 
 export default function Rooms() {
   const user = useAuthStore((s) => s.user);
@@ -82,7 +36,6 @@ export default function Rooms() {
 
   const states = useDeviceStore((s) => s.states);
   const availability = useDeviceStore((s) => s.availability);
-  const updateDeviceState = useDeviceStore((s) => s.updateDeviceState);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,17 +77,7 @@ export default function Rooms() {
     [rooms, selectedId]
   );
 
-  const handleCommand = useCallback(
-    async (deviceId: string, action: string, properties: Record<string, unknown>) => {
-      updateDeviceState(deviceId, properties);
-      try {
-        await api.post(`/devices/${deviceId}/command`, { action, properties });
-      } catch {
-        load();
-      }
-    },
-    [updateDeviceState, load]
-  );
+  const handleCommand = useDeviceCommand(load);
 
   const createRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,27 +146,21 @@ export default function Rooms() {
 
   return (
     <div className="min-h-full bg-[var(--bg-primary)] p-4 md:p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Rooms</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            {rooms.length} room{rooms.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setAddRoomOpen(true)}
-          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-        >
-          Add Room
-        </button>
-      </div>
+      <PageHeader
+        title="Rooms"
+        subtitle={`${rooms.length} room${rooms.length === 1 ? '' : 's'}`}
+        action={
+          <button
+            type="button"
+            onClick={() => setAddRoomOpen(true)}
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+          >
+            Add Room
+          </button>
+        }
+      />
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
-          {error}
-        </div>
-      )}
+      <InlineError message={error} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {sortedRooms.map((r) => {

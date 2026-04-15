@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import type { RoomListItem } from '../lib/hub-types';
 import { subscribe } from '../lib/mqtt';
+import { PencilIcon, TrashIcon } from './action-icons';
 
 export type SetupQueueEntry = {
   entry_id: string;
@@ -16,8 +18,6 @@ export type SetupQueueEntry = {
   error: string | null;
   created_at: string;
 };
-
-type Room = { room_id: string; name: string };
 
 const PROTOCOL_LABELS: Record<string, string> = {
   matter: 'Matter',
@@ -53,7 +53,7 @@ function QueueStatusBadge({ status }: { status: SetupQueueEntry['status'] }) {
 }
 
 type Props = {
-  rooms: Room[];
+  rooms: RoomListItem[];
   onWaitingCountChange?: (count: number) => void;
 };
 
@@ -134,6 +134,15 @@ export default function SetupQueuePanel({ rooms, onWaitingCountChange }: Props) 
   const removeQueueEntry = useCallback(async (id: string) => {
     setQueue((prev) => prev.filter((e) => e.entry_id !== id));
     await api.delete(`/setup-queue/${id}`).catch(() => {});
+  }, []);
+
+  const cancelConnectingEntry = useCallback(async (id: string) => {
+    setQueue((prev) =>
+      prev.map((e) =>
+        e.entry_id === id ? { ...e, status: 'waiting' as const, error: null } : e
+      )
+    );
+    await api.post(`/setup-queue/${id}/cancel`).catch(() => {});
   }, []);
 
   const retryQueueEntry = useCallback(async (id: string) => {
@@ -231,57 +240,50 @@ export default function SetupQueuePanel({ rooms, onWaitingCountChange }: Props) 
                 </p>
                 {entry.error && <p className="mt-0.5 text-[10px] leading-tight text-[var(--danger)]">{entry.error}</p>}
               </div>
-              <QueueStatusBadge status={entry.status} />
-              <div className="flex shrink-0 items-center gap-1">
-                {(entry.status === 'failed' || entry.status === 'waiting') && (
-                  <button
-                    type="button"
-                    onClick={() => retryQueueEntry(entry.entry_id)}
-                    className="rounded-lg px-1.5 py-1 text-xs text-[var(--accent)] hover:bg-[var(--bg-card-active)]"
-                  >
-                    {entry.status === 'failed' ? 'Retry' : 'Connect'}
-                  </button>
-                )}
-                {entry.status === 'connecting' && (
-                  <button
-                    type="button"
-                    onClick={() => removeQueueEntry(entry.entry_id)}
-                    className="rounded-lg px-1.5 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-active)]"
-                  >
-                    Cancel
-                  </button>
-                )}
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    {(entry.status === 'failed' || entry.status === 'waiting') && (
+                      <button
+                        type="button"
+                        onClick={() => retryQueueEntry(entry.entry_id)}
+                        className="rounded-lg px-1.5 py-1 text-xs text-[var(--accent)] hover:bg-[var(--bg-card-active)]"
+                      >
+                        {entry.status === 'failed' ? 'Retry' : 'Connect'}
+                      </button>
+                    )}
+                    {entry.status === 'connecting' && (
+                      <button
+                        type="button"
+                        onClick={() => cancelConnectingEntry(entry.entry_id)}
+                        className="rounded-lg px-1.5 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-active)]"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                  <QueueStatusBadge status={entry.status} />
+                </div>
                 {entry.status !== 'connecting' && (
-                  <button
-                    type="button"
-                    onClick={() => startEdit(entry)}
-                    className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
-                    title="Edit"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path
-                        d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(entry)}
+                      title="Edit"
+                      className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-active)] hover:text-[var(--text-primary)]"
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeQueueEntry(entry.entry_id)}
+                      title="Remove"
+                      className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => removeQueueEntry(entry.entry_id)}
-                  className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-active)] hover:text-[var(--danger)]"
-                  title="Remove"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-                  </svg>
-                </button>
               </div>
             </div>
           );

@@ -1,296 +1,34 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { InlineError } from '../components/InlineError';
+import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { PencilIcon, TrashIcon } from '../components/action-icons';
-import { Toggle } from '../components/Toggle';
-import { Slider } from '../components/Slider';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent, type Modifier } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+
+import {
+  type AutomationRule,
+  type DeviceOpt,
+  type SceneOpt,
+  type TriggerType,
+  getPropertiesForDevice,
+  triggerSummary,
+  defaultTrigger,
+  emptyRule,
+  inputCls,
+  selectCls,
+  cardCls,
+  pillBtnCls,
+} from './automations/automation-data';
+import { ValueControl } from './automations/ValueControl';
+import { SchedulePicker } from './automations/SchedulePicker';
+import { SortableActionCard } from './automations/SortableActionCard';
 
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,
   x: 0,
 });
-
-type TriggerType = 'device_state' | 'schedule';
-
-interface AutomationRule {
-  rule_id: string;
-  name: string;
-  enabled: boolean;
-  retrigger: { behavior: 'restart' | 'ignore' | 'queue'; cooldown_seconds: number };
-  trigger: Record<string, unknown>;
-  conditions: Record<string, unknown>[];
-  actions: Record<string, unknown>[];
-  condition_logic: 'all' | 'any';
-}
-
-interface DeviceOpt {
-  device_id: string;
-  name: string;
-  device_type: string;
-}
-
-interface SceneOpt {
-  scene_id: string;
-  name: string;
-}
-
-// ---------------------------------------------------------------------------
-// Property definitions per device type
-// ---------------------------------------------------------------------------
-
-type PropertyControl =
-  | { control: 'toggle' }
-  | { control: 'slider'; min: number; max: number; unit?: string }
-  | { control: 'number'; min?: number; max?: number; unit?: string }
-  | { control: 'select'; options: { value: string; label: string }[] };
-
-type PropertyDef = { key: string; label: string } & PropertyControl;
-
-const DEVICE_PROPERTIES: Record<string, PropertyDef[]> = {
-  light: [
-    { key: 'on', label: 'Power', control: 'toggle' },
-    { key: 'brightness', label: 'Brightness', control: 'slider', min: 0, max: 100, unit: '%' },
-    { key: 'color_temp', label: 'Color temperature', control: 'slider', min: 150, max: 500, unit: ' K' },
-  ],
-  switch: [
-    { key: 'on', label: 'Power', control: 'toggle' },
-  ],
-  lock: [
-    { key: 'locked', label: 'Locked', control: 'toggle' },
-  ],
-  thermostat: [
-    { key: 'hvac_mode', label: 'Mode', control: 'select', options: [
-      { value: 'off', label: 'Off' },
-      { value: 'heat', label: 'Heat' },
-      { value: 'cool', label: 'Cool' },
-      { value: 'auto', label: 'Auto' },
-    ] },
-    { key: 'target_temperature', label: 'Target temperature', control: 'number', min: 40, max: 95, unit: '°' },
-  ],
-  contact_sensor: [
-    { key: 'open', label: 'Open', control: 'toggle' },
-  ],
-  motion_sensor: [
-    { key: 'motion', label: 'Motion detected', control: 'toggle' },
-  ],
-  environment_sensor: [
-    { key: 'temperature', label: 'Temperature', control: 'number', unit: '°' },
-    { key: 'humidity', label: 'Humidity', control: 'number', min: 0, max: 100, unit: '%' },
-  ],
-  blinds: [
-    { key: 'position', label: 'Position', control: 'slider', min: 0, max: 100, unit: '%' },
-    { key: 'tilt', label: 'Tilt', control: 'slider', min: 0, max: 100, unit: '%' },
-  ],
-};
-
-function getPropertiesForDevice(deviceId: string, devices: DeviceOpt[]): PropertyDef[] {
-  const dev = devices.find((d) => d.device_id === deviceId);
-  if (!dev) return [];
-  return DEVICE_PROPERTIES[dev.device_type] ?? [];
-}
-
-// ---------------------------------------------------------------------------
-// Schedule (cron) helpers
-// ---------------------------------------------------------------------------
-
-type RepeatMode = 'once' | 'every_day' | 'weekdays' | 'weekends' | 'specific';
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-const DAY_CRON = [1, 2, 3, 4, 5, 6, 0]; // cron: 0=Sun, 1=Mon...
-
-interface ScheduleState {
-  repeat: RepeatMode;
-  days: boolean[];
-  time: string; // HH:mm
-}
-
-function cronToSchedule(cron: string): ScheduleState {
-  const parts = cron.trim().split(/\s+/);
-  const minute = parts[0] ?? '0';
-  const hour = parts[1] ?? '8';
-  const dom = parts[2] ?? '*';
-  const month = parts[3] ?? '*';
-  const dow = parts[4] ?? '*';
-  const time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-
-  if (dom !== '*' && month !== '*') return { repeat: 'once', days: Array(7).fill(false), time };
-  if (dow === '*') return { repeat: 'every_day', days: Array(7).fill(false), time };
-  const nums = dow.split(',').map(Number);
-  const isWeekdays = nums.length === 5 && [1, 2, 3, 4, 5].every((n) => nums.includes(n));
-  const isWeekends = nums.length === 2 && [0, 6].every((n) => nums.includes(n));
-  if (isWeekdays) return { repeat: 'weekdays', days: Array(7).fill(false), time };
-  if (isWeekends) return { repeat: 'weekends', days: Array(7).fill(false), time };
-
-  const days = DAY_CRON.map((cronDay) => nums.includes(cronDay));
-  return { repeat: 'specific', days, time };
-}
-
-function scheduleToCron(s: ScheduleState): string {
-  const [h, m] = s.time.split(':').map(Number);
-  const minute = isNaN(m!) ? 0 : m;
-  const hour = isNaN(h!) ? 8 : h;
-
-  if (s.repeat === 'once') {
-    const now = new Date();
-    return `${minute} ${hour} ${now.getDate()} ${now.getMonth() + 1} *`;
-  }
-
-  let dow = '*';
-  if (s.repeat === 'weekdays') dow = '1,2,3,4,5';
-  else if (s.repeat === 'weekends') dow = '0,6';
-  else if (s.repeat === 'specific') {
-    const selected = DAY_CRON.filter((_, i) => s.days[i]);
-    if (selected.length > 0) dow = selected.join(',');
-  }
-  return `${minute} ${hour} * * ${dow}`;
-}
-
-// ---------------------------------------------------------------------------
-// Trigger summary (for rule list cards)
-// ---------------------------------------------------------------------------
-
-function deviceName(id: unknown, devices: DeviceOpt[]): string {
-  if (typeof id !== 'string' || !id) return 'a device';
-  return devices.find((d) => d.device_id === id)?.name ?? String(id);
-}
-
-function propertyLabel(propertyKey: unknown, deviceId: unknown, devices: DeviceOpt[]): string {
-  if (typeof propertyKey !== 'string') return '';
-  const dev = devices.find((d) => d.device_id === deviceId);
-  if (dev) {
-    const defs = DEVICE_PROPERTIES[dev.device_type];
-    const def = defs?.find((p) => p.key === propertyKey);
-    if (def) return def.label.toLowerCase();
-  }
-  return propertyKey;
-}
-
-function triggerSummary(trigger: Record<string, unknown>, devices: DeviceOpt[]): string {
-  const t = trigger?.type as string | undefined;
-  if (t === 'device_state') {
-    const name = deviceName(trigger.device_id, devices);
-    const prop = propertyLabel(trigger.property, trigger.device_id, devices);
-    return `${name} ${prop} changes`;
-  }
-  if (t === 'schedule') {
-    try {
-      const s = cronToSchedule(String(trigger.cron ?? ''));
-      const repeatLabel = s.repeat === 'once' ? '(once)' :
-        s.repeat === 'every_day' ? 'every day' :
-        s.repeat === 'weekdays' ? 'on weekdays' :
-        s.repeat === 'weekends' ? 'on weekends' :
-        'on selected days';
-      return `${s.time} ${repeatLabel}`;
-    } catch {
-      return `Schedule: ${String(trigger.cron ?? '')}`;
-    }
-  }
-  if (t === 'availability') return `${deviceName(trigger.device_id, devices)} goes ${String(trigger.to ?? '')}`;
-  return t || '(no trigger)';
-}
-
-// ---------------------------------------------------------------------------
-// Value control renderer (shared between triggers, conditions, and actions)
-// ---------------------------------------------------------------------------
-
-function ValueControl({ def, value, onChange }: {
-  def: PropertyDef;
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  if (def.control === 'toggle') {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="text-base text-[var(--text-secondary)]">{value ? 'On' : 'Off'}</span>
-        <Toggle checked={!!value} onChange={(c) => onChange(c)} />
-      </div>
-    );
-  }
-  if (def.control === 'slider') {
-    return (
-      <Slider
-        label={def.label}
-        value={Number(value ?? def.min)}
-        min={def.min}
-        max={def.max}
-        unit={def.unit}
-        onChange={(v) => onChange(v)}
-      />
-    );
-  }
-  if (def.control === 'number') {
-    return (
-      <div className="flex items-center gap-2">
-        <input
-          type="number"
-          min={def.min}
-          max={def.max}
-          value={value == null ? '' : Number(value)}
-          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]"
-        />
-        {def.unit && <span className="text-base text-[var(--text-secondary)]">{def.unit}</span>}
-      </div>
-    );
-  }
-  if (def.control === 'select') {
-    return (
-      <select
-        value={String(value ?? '')}
-        onChange={(e) => onChange(e.target.value)}
-        className={selectCls}
-      >
-        <option value="">Choose...</option>
-        {def.options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    );
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Shared style constants
-// ---------------------------------------------------------------------------
-
-const inputCls =
-  'mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-base text-[var(--text-primary)]';
-const selectCls = inputCls + ' select-chevron';
-const cardCls = 'rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4';
-const pillBtnCls =
-  'rounded-lg border border-[var(--border)] px-3 py-1.5 text-base font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-card-active)]';
-
-// ---------------------------------------------------------------------------
-// Defaults
-// ---------------------------------------------------------------------------
-
-const defaultTrigger = (type: TriggerType): Record<string, unknown> => {
-  switch (type) {
-    case 'device_state':
-      return { type: 'device_state', device_id: '', property: 'on', to: true };
-    case 'schedule':
-      return { type: 'schedule', cron: '0 8 * * *' };
-    default:
-      return { type: 'device_state', device_id: '', property: '', to: '' };
-  }
-};
-
-const emptyRule = (): Omit<AutomationRule, 'rule_id'> => ({
-  name: '',
-  enabled: true,
-  retrigger: { behavior: 'ignore', cooldown_seconds: 0 },
-  trigger: defaultTrigger('schedule'),
-  conditions: [],
-  actions: [{ type: 'device_command', device_id: '', action: 'set', properties: {} }],
-  condition_logic: 'all',
-});
-
-// ===========================================================================
-// Component
-// ===========================================================================
 
 export default function Automations() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -339,8 +77,8 @@ export default function Automations() {
 
   const openEdit = (rule: AutomationRule) => {
     setEditingId(rule.rule_id);
-    const { rule_id: ruleIdToOmit, ...rest } = rule;
-    void ruleIdToOmit;
+    const { rule_id: _, ...rest } = rule;
+    void _;
     setDraft({
       ...rest,
       trigger: { ...rest.trigger },
@@ -476,27 +214,21 @@ export default function Automations() {
 
   return (
     <div className="min-h-full bg-[var(--bg-primary)] p-4 md:p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Automations</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            {loading ? 'Loading\u2026' : `${rules.length} automation${rules.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-        >
-          Create Automation
-        </button>
-      </div>
+      <PageHeader
+        title="Automations"
+        subtitle={loading ? 'Loading\u2026' : `${rules.length} automation${rules.length === 1 ? '' : 's'}`}
+        action={
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+          >
+            Create Automation
+          </button>
+        }
+      />
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
-          {error}
-        </div>
-      )}
+      <InlineError message={error} />
 
       {loading && <Spinner />}
 
@@ -565,11 +297,11 @@ export default function Automations() {
       {/* ================================================================= */}
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex min-h-full justify-center overflow-y-auto bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex min-h-0 items-start justify-center overflow-y-auto bg-black/50 p-4 py-8"
           role="dialog"
           aria-modal="true"
         >
-          <div className="my-8 w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-xl">
+          <div className="w-full max-w-2xl shrink-0 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-xl">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">
               {editingId ? 'Edit Automation' : 'New Automation'}
             </h2>
@@ -1118,134 +850,6 @@ export default function Automations() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ===========================================================================
-// Sortable Action Card
-// ===========================================================================
-
-function SortableActionCard({ id, onRemove, action, children }: {
-  id: string;
-  onRemove: () => void;
-  action: Record<string, unknown>;
-  children: React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-    animateLayoutChanges: () => false,
-  });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : undefined,
-    position: 'relative',
-    boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.25)' : undefined,
-  };
-  const label = action.type === 'device_command' ? 'Control a device' :
-    action.type === 'delay' ? 'Wait' :
-    action.type === 'notify' ? 'Send notification' :
-    action.type === 'activate_scene' ? 'Activate scene' : String(action.type);
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} className={cardCls}>
-      <div className="mb-3 flex items-center gap-2">
-        <button
-          type="button"
-          ref={setActivatorNodeRef}
-          {...listeners}
-          className="touch-none cursor-grab text-[var(--text-muted)] active:cursor-grabbing"
-          aria-label="Drag to reorder"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
-            <circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="3" r="1.5"/>
-            <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
-            <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
-          </svg>
-        </button>
-        <p className="flex-1 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">{label}</p>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-sm text-[var(--danger)] hover:underline"
-        >
-          Remove
-        </button>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// ===========================================================================
-// Schedule Picker (extracted for clarity)
-// ===========================================================================
-
-function SchedulePicker({ cron, onChange }: { cron: string; onChange: (cron: string) => void }) {
-  const [state, setState] = useState<ScheduleState>(() => cronToSchedule(cron));
-
-  const update = (patch: Partial<ScheduleState>) => {
-    setState((prev) => {
-      const next = { ...prev, ...patch };
-      onChange(scheduleToCron(next));
-      return next;
-    });
-  };
-
-  return (
-    <div className={'mt-3 space-y-4 ' + cardCls}>
-      <label className="block text-base font-medium text-[var(--text-secondary)]">
-        Repeat
-        <select
-          value={state.repeat}
-          onChange={(e) => update({ repeat: e.target.value as RepeatMode })}
-          className={selectCls}
-        >
-          <option value="once">Don't repeat</option>
-          <option value="every_day">Every day</option>
-          <option value="weekdays">Weekdays (Mon-Fri)</option>
-          <option value="weekends">Weekends (Sat-Sun)</option>
-          <option value="specific">Specific days...</option>
-        </select>
-      </label>
-
-      {state.repeat === 'specific' && (
-        <div>
-          <span className="block text-base font-medium text-[var(--text-secondary)]">Days</span>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {DAY_LABELS.map((label, idx) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  const next = [...state.days];
-                  next[idx] = !next[idx];
-                  update({ days: next });
-                }}
-                className={[
-                  'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                  state.days[idx]
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-active)]',
-                ].join(' ')}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <label className="block text-base font-medium text-[var(--text-secondary)]">
-        Time
-        <input
-          type="time"
-          value={state.time}
-          onChange={(e) => update({ time: e.target.value })}
-          className={inputCls}
-        />
-      </label>
     </div>
   );
 }

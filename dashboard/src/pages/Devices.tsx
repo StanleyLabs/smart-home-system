@@ -1,30 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import type { Room, HubDevice } from '../lib/hub-types';
+import { InlineError } from '../components/InlineError';
+import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 import { useDeviceStore } from '../stores/device-store';
 import AddDeviceWizard from '../components/AddDeviceWizard';
 import { PencilIcon, TrashIcon } from '../components/action-icons';
 import SetupQueuePanel from '../components/SetupQueuePanel';
-
-type Room = {
-  room_id: string;
-  name: string;
-  floor: string;
-};
-
-type HubDevice = {
-  device_id: string;
-  device_type: string;
-  protocol: string;
-  name: string;
-  room_id: string | null;
-  online: boolean;
-  manufacturer?: string;
-  model?: string;
-  supports?: string[];
-  state: Record<string, unknown>;
-};
 
 /* ── Device type labels & icons ────────────────────────────────────── */
 
@@ -407,14 +391,10 @@ export default function Devices() {
 
   return (
     <div className="min-h-full bg-[var(--bg-primary)] p-4 md:p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Devices</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            {devices.length} device{devices.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        {isAdmin && (
+      <PageHeader
+        title="Devices"
+        subtitle={`${devices.length} device${devices.length !== 1 ? 's' : ''}`}
+        action={isAdmin ? (
           <button
             type="button"
             onClick={() => setAddOpen(true)}
@@ -422,8 +402,8 @@ export default function Devices() {
           >
             Add Device
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {isAdmin && queueWaiting > 0 && (
         <button
@@ -451,11 +431,7 @@ export default function Devices() {
         <SetupQueuePanel rooms={rooms} onWaitingCountChange={setQueueWaiting} />
       )}
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
-          {error}
-        </div>
-      )}
+      <InlineError message={error} />
 
       {/* ── Device list ────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
@@ -498,7 +474,7 @@ export default function Devices() {
                 i === sortedDevices.length - 1 ? 'border-b-0' : '',
               ].join(' ')}
             >
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 sm:right-3 sm:top-2.5">
+              <div className="absolute right-2 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 sm:right-3">
                 <button
                   type="button"
                   onClick={() => setEditDevice(d)}

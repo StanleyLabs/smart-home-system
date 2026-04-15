@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { InlineError } from '../components/InlineError';
+import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { useAuthStore } from '../stores/auth-store';
 
@@ -132,22 +134,20 @@ export default function Users() {
 
   return (
     <div className="min-h-full p-6 text-[var(--text-primary)]">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Users</h1>
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-        >
-          Add User
-        </button>
-      </div>
+      <PageHeader
+        title="Users"
+        action={
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+          >
+            Add User
+          </button>
+        }
+      />
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--danger)]">
-          {error}
-        </p>
-      )}
+      <InlineError message={error} />
 
       {loading && <Spinner />}
 

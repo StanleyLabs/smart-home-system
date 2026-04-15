@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../lib/api';
+import type { RoomListItem } from '../lib/hub-types';
 import { subscribe } from '../lib/mqtt';
 import { setupPayloadIdentityKey } from '../lib/setup-payload-key';
 import type { SetupQueueEntry } from './SetupQueuePanel';
@@ -16,8 +17,6 @@ type DiscoveredDevice = {
   requires_code: boolean;
 };
 
-type Room = { room_id: string; name: string };
-
 type CommissionedDevice = {
   device_id: string;
   device_type: string;
@@ -32,7 +31,7 @@ type CommissioningStatus = 'idle' | 'pairing' | 'configuring' | 'complete' | 'fa
 type View = 'main' | 'scan' | 'manual' | 'pairing' | 'setup';
 
 type Props = {
-  rooms: Room[];
+  rooms: RoomListItem[];
   onClose: () => void;
   onComplete: () => void;
 };

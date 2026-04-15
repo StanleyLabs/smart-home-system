@@ -15,6 +15,7 @@ import type {
   DiscoveredDevice,
   MqttEnvelope,
   Protocol,
+  SetupQueueEntry,
   SystemSettings,
 } from "../types.js";
 import { getActiveWifiCredentials } from "./wifi-manager.js";
@@ -33,7 +34,10 @@ export class Engine {
   private adapters = new Map<string, ProtocolAdapter>();
   private pendingDiscoveries = new Map<string, DiscoveredDevice>();
   private discoveryActive = false;
-  private queueProcessing = new Set<string>();
+  /** Active queue commission per entry (symbol lease so cancel can release without racing a new Connect). */
+  private queueProcessingRuns = new Map<string, symbol>();
+  private queueCommissionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private queueConnectCancelled = new Set<string>();
   private queueDiscoveryTimer: ReturnType<typeof setInterval> | null = null;
 
   publish: MqttPublisher = () => {};
@@ -528,7 +532,7 @@ export class Engine {
     this.queueDiscoveryTimer = setInterval(() => {
       const stale = this.setupQueue
         .getAll()
-        .filter(e => e.status === "connecting" && !this.queueProcessing.has(e.entry_id));
+        .filter(e => e.status === "connecting" && !this.queueProcessingRuns.has(e.entry_id));
       for (const entry of stale) {
         this.setupQueue.updateStatus(entry.entry_id, "waiting");
         this.publishSetupQueueEvent("entry_updated", { ...entry, status: "waiting" });
@@ -552,12 +556,34 @@ export class Engine {
 
   private static readonly QUEUE_COMMISSION_TIMEOUT = 35_000;
 
+  /**
+   * Stop an in-progress queue commission and return the entry to waiting (does not remove the row).
+   */
+  cancelSetupQueueConnect(entryId: string): SetupQueueEntry | undefined {
+    const entry = this.setupQueue.get(entryId);
+    if (!entry || entry.status !== "connecting") return undefined;
+
+    const timer = this.queueCommissionTimers.get(entryId);
+    if (timer) {
+      clearTimeout(timer);
+      this.queueCommissionTimers.delete(entryId);
+    }
+
+    this.queueConnectCancelled.add(entryId);
+    this.queueProcessingRuns.delete(entryId);
+    this.setupQueue.updateStatus(entryId, "waiting", { error: undefined });
+    const updated = this.setupQueue.get(entryId)!;
+    this.publishSetupQueueEvent("entry_updated", updated);
+    return updated;
+  }
+
   /** Attempt to commission a single queue entry. */
   async processQueueEntry(entryId: string) {
     const entry = this.setupQueue.get(entryId);
-    if (!entry || entry.status === "online" || this.queueProcessing.has(entryId)) return;
+    if (!entry || entry.status === "online" || this.queueProcessingRuns.has(entryId)) return;
 
-    this.queueProcessing.add(entryId);
+    const lease = Symbol("queueProcess");
+    this.queueProcessingRuns.set(entryId, lease);
     this.setupQueue.updateStatus(entryId, "connecting");
     this.publishSetupQueueEvent("entry_updated", { ...entry, status: "connecting" });
 
@@ -567,6 +593,7 @@ export class Engine {
       console.log(`[SetupQueue] Commission timeout for ${entryId}`);
       this.handleQueueEntryFailure(entryId, entry, "Device not reachable");
     }, Engine.QUEUE_COMMISSION_TIMEOUT);
+    this.queueCommissionTimers.set(entryId, timer);
 
     try {
       const wifi = await getActiveWifiCredentials().catch(() => null);
@@ -578,8 +605,11 @@ export class Engine {
 
       const device = await this.commissionManual(entry.protocol, credentials);
       if (timedOut) return;
+      if (this.queueConnectCancelled.has(entryId)) {
+        await this.removeDevice(device.device_id);
+        return;
+      }
 
-      clearTimeout(timer);
       this.setupDevice(device.device_id, entry.name, entry.room_id ?? undefined);
 
       this.setupQueue.updateStatus(entryId, "online", { device_id: device.device_id });
@@ -595,11 +625,16 @@ export class Engine {
       });
     } catch (err: any) {
       if (timedOut) return;
-      clearTimeout(timer);
+      if (this.queueConnectCancelled.has(entryId)) return;
       this.handleQueueEntryFailure(entryId, entry, err.message ?? String(err));
     } finally {
-      clearTimeout(timer);
-      this.queueProcessing.delete(entryId);
+      const t = this.queueCommissionTimers.get(entryId);
+      if (t) clearTimeout(t);
+      this.queueCommissionTimers.delete(entryId);
+      this.queueConnectCancelled.delete(entryId);
+      if (this.queueProcessingRuns.get(entryId) === lease) {
+        this.queueProcessingRuns.delete(entryId);
+      }
     }
   }
 
@@ -608,7 +643,7 @@ export class Engine {
     this.setupQueue.updateStatus(entryId, "failed", { error: errorMsg });
     const updated = this.setupQueue.get(entryId)!;
     this.publishSetupQueueEvent("entry_updated", updated);
-    this.queueProcessing.delete(entryId);
+    this.queueProcessingRuns.delete(entryId);
   }
 
   /** Attempt all waiting queue entries. */

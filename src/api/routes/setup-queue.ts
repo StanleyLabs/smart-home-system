@@ -71,6 +71,15 @@ export function setupQueueRoutes(engine: Engine) {
     return c.json({ cleared: count });
   });
 
+  app.post("/:id/cancel", requireRole("admin"), (c) => {
+    const entryId = c.req.param("id") as string;
+    const updated = engine.cancelSetupQueueConnect(entryId);
+    if (!updated) {
+      return c.json({ error: "Entry not found or not connecting" }, 404);
+    }
+    return c.json(updated);
+  });
+
   app.post("/:id/retry", requireRole("admin"), async (c) => {
     const entryId = c.req.param("id") as string;
     const entry = engine.setupQueue.get(entryId);

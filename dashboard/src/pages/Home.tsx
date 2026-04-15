@@ -1,64 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import type { Room, HubDevice } from '../lib/hub-types';
+import { toCardDevice, mergedState } from '../lib/device-card-bridge';
+import { useDeviceCommand } from '../hooks/use-device-command';
 import { Spinner } from '../components/Spinner';
 import { useDeviceStore } from '../stores/device-store';
-import DeviceCard, { type DeviceCardDevice } from '../components/DeviceCard';
-
-type Room = {
-  room_id: string;
-  name: string;
-  floor: string;
-};
-
-type HubDevice = {
-  device_id: string;
-  device_type: string;
-  protocol: string;
-  name: string;
-  room_id: string | null;
-  online: boolean;
-  supports?: string[];
-  state: Record<string, unknown>;
-};
+import DeviceCard from '../components/DeviceCard';
 
 type ScenesResponse = {
   scenes: { scene_id: string; name: string; icon?: string }[];
   active_scene_id: string | null;
 };
-
-function toCardDevice(d: HubDevice, onlineOverride?: boolean): DeviceCardDevice {
-  const allowed: DeviceCardDevice['device_type'][] = [
-    'light',
-    'switch',
-    'lock',
-    'thermostat',
-    'contact_sensor',
-    'motion_sensor',
-    'environment_sensor',
-    'blinds',
-    'camera',
-    'fan',
-    'garage_door',
-    'doorbell',
-  ];
-  const dt = allowed.includes(d.device_type as DeviceCardDevice['device_type'])
-    ? (d.device_type as DeviceCardDevice['device_type'])
-    : 'light';
-  return {
-    device_id: d.device_id,
-    device_type: dt,
-    name: d.name,
-    online: onlineOverride ?? d.online,
-    supports: d.supports,
-  };
-}
-
-function mergedState(
-  device: HubDevice,
-  storeSlice: Record<string, unknown> | undefined
-): Record<string, unknown> {
-  return { ...(device.state ?? {}), ...(storeSlice ?? {}) };
-}
 
 const SENSOR_TYPES = new Set(['contact_sensor', 'motion_sensor', 'environment_sensor']);
 
@@ -73,7 +25,9 @@ export default function Home() {
 
   const states = useDeviceStore((s) => s.states);
   const availability = useDeviceStore((s) => s.availability);
-  const updateDeviceState = useDeviceStore((s) => s.updateDeviceState);
+
+  const bumpDevices = useCallback(() => setDevices((prev) => [...prev]), []);
+  const handleCommand = useDeviceCommand(bumpDevices);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,18 +83,6 @@ export default function Home() {
     }
     return sections;
   }, [rooms, roomDeviceMap]);
-
-  const handleCommand = useCallback(
-    async (deviceId: string, action: string, properties: Record<string, unknown>) => {
-      updateDeviceState(deviceId, properties);
-      try {
-        await api.post(`/devices/${deviceId}/command`, { action, properties });
-      } catch {
-        setDevices((prev) => [...prev]);
-      }
-    },
-    [updateDeviceState]
-  );
 
   const handleRoomAllOn = async (roomId: string) => {
     try {
