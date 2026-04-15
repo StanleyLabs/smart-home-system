@@ -494,7 +494,6 @@ export default function Devices() {
           <button type="button" onClick={() => toggleSort('status')} className="flex w-20 items-center justify-center gap-0.5 hover:text-[var(--text-primary)]">
             Status <SortArrow dir={sortDir} active={sortKey === 'status'} />
           </button>
-          <span className="w-20 text-right">Actions</span>
         </div>
 
         {sortedDevices.length === 0 && (
@@ -515,84 +514,11 @@ export default function Devices() {
             <div
               key={d.device_id}
               className={[
-                'flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3',
-                i < sortedDevices.length - 1 ? 'border-b border-[var(--border)]' : '',
+                'relative border-b border-[var(--border)] px-4 py-3',
+                i === sortedDevices.length - 1 ? 'border-b-0' : '',
               ].join(' ')}
             >
-              {/* Icon */}
-              <div className={[
-                'hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                online ? 'bg-[var(--accent-glow)] text-[var(--accent)]' : 'bg-[var(--bg-card-active)] text-[var(--text-muted)]',
-              ].join(' ')}>
-                <DeviceTypeIcon type={d.device_type} />
-              </div>
-
-              {/* Name + meta (mobile shows type badge) */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <div className={[
-                    'flex sm:hidden h-6 w-6 shrink-0 items-center justify-center rounded-md',
-                    online ? 'bg-[var(--accent-glow)] text-[var(--accent)]' : 'bg-[var(--bg-card-active)] text-[var(--text-muted)]',
-                  ].join(' ')}>
-                    <DeviceTypeIcon type={d.device_type} />
-                  </div>
-                  <p className="truncate text-sm font-medium text-[var(--text-primary)]">
-                    {d.name}
-                  </p>
-                </div>
-                {meta && (
-                  <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{meta}</p>
-                )}
-              </div>
-
-              {/* Type */}
-              <span className="hidden w-28 text-xs text-[var(--text-secondary)] sm:block">
-                {typeLabel}
-              </span>
-
-              {/* Room */}
-              <span className="hidden w-28 truncate text-xs text-[var(--text-secondary)] sm:block">
-                {room ?? <span className="text-[var(--text-muted)]">—</span>}
-              </span>
-
-              {/* Status */}
-              <div className="hidden w-20 sm:flex justify-center">
-                <span
-                  className={[
-                    'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
-                    online
-                      ? 'bg-[var(--success)]/10 text-[var(--success)]'
-                      : 'bg-[var(--text-muted)]/10 text-[var(--text-muted)]',
-                  ].join(' ')}
-                >
-                  <span className={[
-                    'h-1.5 w-1.5 rounded-full',
-                    online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
-                  ].join(' ')} />
-                  {online ? 'Online' : 'Offline'}
-                </span>
-              </div>
-
-              {/* Mobile meta row */}
-              <div className="flex items-center gap-2 sm:hidden">
-                <span className="text-xs text-[var(--text-muted)]">{typeLabel}</span>
-                <span className="text-[var(--text-muted)]">·</span>
-                <span className="text-xs text-[var(--text-muted)]">{room ?? 'Unassigned'}</span>
-                <span className="text-[var(--text-muted)]">·</span>
-                <span className={[
-                  'inline-flex items-center gap-1 text-xs',
-                  online ? 'text-[var(--success)]' : 'text-[var(--text-muted)]',
-                ].join(' ')}>
-                  <span className={[
-                    'h-1.5 w-1.5 rounded-full',
-                    online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
-                  ].join(' ')} />
-                  {online ? 'Online' : 'Offline'}
-                </span>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex w-20 shrink-0 items-center justify-end gap-1">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 sm:right-3 sm:top-2.5">
                 <button
                   type="button"
                   onClick={() => setEditDevice(d)}
@@ -611,6 +537,80 @@ export default function Devices() {
                     <TrashIcon />
                   </button>
                 )}
+              </div>
+
+              <div className="flex flex-col gap-2 pr-14 sm:flex-row sm:items-center sm:gap-3 sm:pr-16">
+                {/* Icon */}
+                <div className={[
+                  'hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                  online ? 'bg-[var(--accent-glow)] text-[var(--accent)]' : 'bg-[var(--bg-card-active)] text-[var(--text-muted)]',
+                ].join(' ')}>
+                  <DeviceTypeIcon type={d.device_type} />
+                </div>
+
+                {/* Name + meta (mobile shows type badge) */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className={[
+                      'flex sm:hidden h-6 w-6 shrink-0 items-center justify-center rounded-md',
+                      online ? 'bg-[var(--accent-glow)] text-[var(--accent)]' : 'bg-[var(--bg-card-active)] text-[var(--text-muted)]',
+                    ].join(' ')}>
+                      <DeviceTypeIcon type={d.device_type} />
+                    </div>
+                    <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                      {d.name}
+                    </p>
+                  </div>
+                  {meta && (
+                    <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{meta}</p>
+                  )}
+                </div>
+
+                {/* Type */}
+                <span className="hidden w-28 text-xs text-[var(--text-secondary)] sm:block">
+                  {typeLabel}
+                </span>
+
+                {/* Room */}
+                <span className="hidden w-28 truncate text-xs text-[var(--text-secondary)] sm:block">
+                  {room ?? <span className="text-[var(--text-muted)]">—</span>}
+                </span>
+
+                {/* Status */}
+                <div className="hidden w-20 sm:flex justify-center">
+                  <span
+                    className={[
+                      'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+                      online
+                        ? 'bg-[var(--success)]/10 text-[var(--success)]'
+                        : 'bg-[var(--text-muted)]/10 text-[var(--text-muted)]',
+                    ].join(' ')}
+                  >
+                    <span className={[
+                      'h-1.5 w-1.5 rounded-full',
+                      online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
+                    ].join(' ')} />
+                    {online ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+
+                {/* Mobile meta row */}
+                <div className="flex items-center gap-2 sm:hidden">
+                  <span className="text-xs text-[var(--text-muted)]">{typeLabel}</span>
+                  <span className="text-[var(--text-muted)]">·</span>
+                  <span className="text-xs text-[var(--text-muted)]">{room ?? 'Unassigned'}</span>
+                  <span className="text-[var(--text-muted)]">·</span>
+                  <span className={[
+                    'inline-flex items-center gap-1 text-xs',
+                    online ? 'text-[var(--success)]' : 'text-[var(--text-muted)]',
+                  ].join(' ')}>
+                    <span className={[
+                      'h-1.5 w-1.5 rounded-full',
+                      online ? 'bg-[var(--success)]' : 'bg-[var(--text-muted)]',
+                    ].join(' ')} />
+                    {online ? 'Online' : 'Offline'}
+                  </span>
+                </div>
               </div>
             </div>
           );

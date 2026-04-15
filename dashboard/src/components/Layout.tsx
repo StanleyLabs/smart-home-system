@@ -129,22 +129,6 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={!canUndo}
-              onClick={handleUndo}
-              className="inline-flex h-9 shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              disabled={!canRedo}
-              onClick={handleRedo}
-              className="inline-flex h-9 shrink-0 items-center rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Redo
-            </button>
             <Link
               to="/notifications"
               className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-active)]"
@@ -197,6 +181,32 @@ export function Layout({ children }: { children: ReactNode }) {
               </button>
               {userMenuOpen && (
                 <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-lg">
+                  <div className="border-b border-[var(--border)] px-3 py-2 text-xs text-[var(--text-muted)]">
+                    History
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canUndo}
+                    onClick={() => {
+                      handleUndo();
+                      setUserMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canRedo}
+                    onClick={() => {
+                      handleRedo();
+                      setUserMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-active)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Redo
+                  </button>
+                  <div className="my-1 border-t border-[var(--border)]" />
                   <div className="border-b border-[var(--border)] px-3 py-2 text-xs text-[var(--text-muted)]">
                     Theme
                   </div>
