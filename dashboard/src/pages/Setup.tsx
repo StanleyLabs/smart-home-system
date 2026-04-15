@@ -122,6 +122,7 @@ function CaptiveSetup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   useEffect(() => {
     api.get<WifiNetwork[]>('/system/wifi/scan').then(setWifiNetworks).catch(() => {});
@@ -156,6 +157,31 @@ function CaptiveSetup() {
   }
 
   const resolvedHostname = hostname.trim().replace(/\.local$/, '') + '.local';
+  const setupUrl = `http://${resolvedHostname}/`;
+
+  async function copySetupUrl() {
+    try {
+      await navigator.clipboard.writeText(setupUrl);
+      setUrlCopied(true);
+      window.setTimeout(() => setUrlCopied(false), 2500);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = setupUrl;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setUrlCopied(true);
+        window.setTimeout(() => setUrlCopied(false), 2500);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 
   if (done) {
     return (
@@ -186,24 +212,43 @@ function CaptiveSetup() {
               </p>
             </div>
 
-            <div className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] p-6">
-              <p className="mb-1 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
-              <ol className="list-inside list-decimal space-y-2 text-left text-[var(--text-primary)]">
-                <li>Connect your phone to <strong>{selectedSsid}</strong></li>
+            <div className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-input)] p-6 text-left">
+              <p className="mb-3 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
+              <ol className="list-decimal space-y-4 pl-5 text-[var(--text-primary)]">
                 <li className="pl-1">
-                  Open this address in your browser:{' '}
-                  <span className="mt-2 block text-center">
-                    <a
-                      href={`http://${resolvedHostname}/`}
-                      className="inline-block max-w-full rounded-lg px-2 py-1 font-mono text-base font-medium text-[var(--accent)] underline decoration-2 underline-offset-2 [overflow-wrap:anywhere] [word-break:normal]"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      http://{resolvedHostname}/
-                    </a>
-                  </span>
+                  <strong>Copy the setup link below</strong> (this window may close when WiFi switches).
+                </li>
+                <li className="pl-1">Connect your phone to <strong>{selectedSsid}</strong>.</li>
+                <li className="pl-1">
+                  Paste the link into Safari or Chrome, or tap <strong>Open</strong>.
                 </li>
               </ol>
+
+              <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3">
+                <div className="w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] py-1 text-center">
+                  <a
+                    href={setupUrl}
+                    className="inline-block whitespace-nowrap px-1 py-2 font-mono text-base font-semibold text-[var(--accent)] underline decoration-2 underline-offset-2 [text-decoration-skip-ink:none] touch-manipulation"
+                  >
+                    {setupUrl}
+                  </a>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copySetupUrl()}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] touch-manipulation hover:bg-[var(--border)]/40"
+                  >
+                    {urlCopied ? 'Copied' : 'Copy link'}
+                  </button>
+                  <a
+                    href={setupUrl}
+                    className="inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white touch-manipulation hover:bg-[var(--accent-hover)]"
+                  >
+                    Open
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
