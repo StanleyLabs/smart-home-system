@@ -10,6 +10,7 @@ import { closeDb } from "./db/database.js";
 import { seedMockDevices } from "./core/seed-devices.js";
 import { getBaseUrl, type SystemSettings } from "./types.js";
 import { ensureNetworkOrHotspot } from "./core/onboarding.js";
+import { getHotspotIp } from "./core/wifi-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "../config/system.json");
@@ -79,8 +80,9 @@ async function main() {
 
   console.log("Smart Home Hub is running");
   if (hotspotStarted) {
+    const ip = getHotspotIp();
     console.log("  WiFi: Connect to \"Smart-Home-System\" to set up");
-    console.log("  API: http://192.168.4.1");
+    console.log(`  API: http://${ip}`);
   } else {
     console.log(`  API: ${getBaseUrl(settings.network)}`);
   }

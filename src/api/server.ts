@@ -51,6 +51,7 @@ export function createServer(engine: Engine, settings: SystemSettings) {
     const host = c.req.header("host") || "";
     const isLocal =
       host.startsWith("localhost") ||
+      host.startsWith("127.") ||
       host.startsWith("10.42.0.") ||
       host.startsWith("192.168.");
     if (!isLocal && host && !host.includes(".local")) {

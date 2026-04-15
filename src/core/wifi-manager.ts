@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { startCaptiveDns, stopCaptiveDns, getCaptiveDnsPort } from "./captive-dns.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -9,8 +10,11 @@ const HOTSPOT_SSID = "Smart-Home-System";
 const HOTSPOT_CON_NAME = "shs-hotspot";
 const DNSMASQ_CONF_PATH = "/etc/NetworkManager/dnsmasq-shared.d/shs-captive.conf";
 const CAPTIVE_CONF_SCRIPT = path.resolve(__dirname, "../../scripts/install-captive-conf.sh");
+const DEFAULT_HOTSPOT_IP = "10.42.0.1";
 
 let hotspotActive = false;
+let hotspotIp = DEFAULT_HOTSPOT_IP;
+let hotspotIface: string | null = null;
 
 export interface WifiNetwork {
   ssid: string;
@@ -145,11 +149,21 @@ export async function startHotspot(): Promise<WifiResult> {
 
     await run(`nmcli connection up ${HOTSPOT_CON_NAME}`);
 
-    await ensureCaptivePortalRedirect();
+    // Detect the IP that NM assigned to the hotspot interface
+    hotspotIface = iface;
+    hotspotIp = await detectInterfaceIp(iface);
+    console.log(`[wifi] Hotspot interface ${iface} has IP ${hotspotIp}`);
+
+    // Start the in-process DNS responder (answers all queries with our IP)
+    startCaptiveDns(hotspotIp);
+
+    // Redirect HTTP (80 → 3000) and DNS (53 → captive DNS port) on this interface
+    await ensureCaptivePortalRedirect(iface);
+    await ensureDnsRedirect(iface);
 
     hotspotActive = true;
     console.log(`[wifi] Hotspot "${HOTSPOT_SSID}" started on ${iface} (open network, captive portal enabled)`);
-    return { success: true, message: `Hotspot "${HOTSPOT_SSID}" started` };
+    return { success: true, message: `Hotspot "${HOTSPOT_SSID}" started on ${hotspotIp}` };
   } catch (err: any) {
     console.error("[wifi] hotspot start failed:", err.message);
     return { success: false, message: err.message };
@@ -163,10 +177,15 @@ export async function stopHotspot(): Promise<WifiResult> {
   }
 
   try {
+    stopCaptiveDns();
+    if (hotspotIface) {
+      await removeDnsRedirect(hotspotIface);
+    }
+    await removeCaptivePortalRedirect();
     await run(`nmcli connection down ${HOTSPOT_CON_NAME}`);
     await run(`nmcli connection delete ${HOTSPOT_CON_NAME}`).catch(() => {});
-    await removeCaptivePortalRedirect();
     hotspotActive = false;
+    hotspotIface = null;
     console.log("[wifi] Hotspot stopped");
     return { success: true, message: "Hotspot stopped" };
   } catch (err: any) {
@@ -237,8 +256,24 @@ export function getHotspotSsid(): string {
   return HOTSPOT_SSID;
 }
 
+export function getHotspotIp(): string {
+  return hotspotIp;
+}
+
 export function isHotspotMode(): boolean {
   return hotspotActive;
+}
+
+async function detectInterfaceIp(iface: string): Promise<string> {
+  try {
+    await new Promise((r) => setTimeout(r, 1000));
+    const out = await run(
+      `nmcli -g IP4.ADDRESS connection show ${HOTSPOT_CON_NAME}`
+    );
+    const ip = out.split("/")[0].trim();
+    if (ip) return ip;
+  } catch {}
+  return DEFAULT_HOTSPOT_IP;
 }
 
 async function ensureCaptivePortalDns(): Promise<void> {
@@ -251,22 +286,54 @@ async function ensureCaptivePortalDns(): Promise<void> {
   }
 }
 
-async function ensureCaptivePortalRedirect(): Promise<void> {
+async function ensureCaptivePortalRedirect(iface?: string): Promise<void> {
+  const ifPart = iface ? `-i ${iface} ` : "";
+  const rule = `${ifPart}-p tcp --dport 80 -j REDIRECT --to-port 3000`;
   try {
     await run(
-      "sudo iptables -t nat -C PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000 2>/dev/null" +
-      " || sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000"
+      `sudo iptables -t nat -C PREROUTING ${rule} 2>/dev/null` +
+      ` || sudo iptables -t nat -A PREROUTING ${rule}`
     );
-    console.log("[wifi] Port 80 → 3000 redirect active");
+    console.log(`[wifi] Port 80 → 3000 redirect active${iface ? ` (${iface})` : ""}`);
   } catch (err: any) {
-    console.warn("[wifi] Could not set up port redirect:", err.message);
+    console.warn("[wifi] Could not set up HTTP redirect:", err.message);
   }
 }
 
 async function removeCaptivePortalRedirect(): Promise<void> {
+  // Remove both interface-specific and global rules (best effort)
+  const rules = [
+    hotspotIface
+      ? `-i ${hotspotIface} -p tcp --dport 80 -j REDIRECT --to-port 3000`
+      : null,
+    "-p tcp --dport 80 -j REDIRECT --to-port 3000",
+  ].filter(Boolean);
+  for (const rule of rules) {
+    try {
+      await run(`sudo iptables -t nat -D PREROUTING ${rule}`);
+    } catch {}
+  }
+}
+
+async function ensureDnsRedirect(iface: string): Promise<void> {
+  const dnsPort = getCaptiveDnsPort();
+  const rule = `-i ${iface} -p udp --dport 53 -j REDIRECT --to-port ${dnsPort}`;
   try {
     await run(
-      "sudo iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3000"
+      `sudo iptables -t nat -C PREROUTING ${rule} 2>/dev/null` +
+      ` || sudo iptables -t nat -A PREROUTING ${rule}`
+    );
+    console.log(`[wifi] DNS redirect active on ${iface} (53 → ${dnsPort})`);
+  } catch (err: any) {
+    console.warn("[wifi] Could not set up DNS redirect:", err.message);
+  }
+}
+
+async function removeDnsRedirect(iface: string): Promise<void> {
+  const dnsPort = getCaptiveDnsPort();
+  try {
+    await run(
+      `sudo iptables -t nat -D PREROUTING -i ${iface} -p udp --dport 53 -j REDIRECT --to-port ${dnsPort}`
     );
   } catch {}
 }
