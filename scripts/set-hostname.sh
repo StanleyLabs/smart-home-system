@@ -26,6 +26,11 @@ fi
 CURRENT="$(hostnamectl --static 2>/dev/null || hostname)"
 if [[ "$CURRENT" == "$SHORT_NAME" ]]; then
   echo "OK: Hostname already set to $SHORT_NAME"
+  # Still restart Avahi so mDNS re-binds after WiFi/captive handoff (otherwise
+  # smarthome.local may not resolve on the LAN until reboot).
+  if command -v systemctl &>/dev/null && systemctl is-active --quiet avahi-daemon; then
+    systemctl restart avahi-daemon
+  fi
   exit 0
 fi
 

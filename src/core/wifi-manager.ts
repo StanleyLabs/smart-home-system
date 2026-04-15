@@ -318,6 +318,11 @@ async function ensureCaptivePortalRedirect(iface?: string): Promise<void> {
   }
 }
 
+/** Ensures the global (all-interfaces) 80→3000 NAT rule — needed after captive handoff. */
+export async function ensureGlobalPort80Redirect(): Promise<void> {
+  await ensureCaptivePortalRedirect(undefined);
+}
+
 async function removeCaptivePortalRedirect(): Promise<void> {
   // Only remove the interface-specific rule that startHotspot() added.
   // The global rule (no -i flag) is installed by setup-linux.sh /

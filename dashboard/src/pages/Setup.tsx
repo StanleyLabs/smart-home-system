@@ -190,12 +190,18 @@ function CaptiveSetup() {
               <p className="mb-1 text-sm font-medium text-[var(--text-secondary)]">To finish setup:</p>
               <ol className="list-inside list-decimal space-y-2 text-left text-[var(--text-primary)]">
                 <li>Connect your phone to <strong>{selectedSsid}</strong></li>
-                <li>
-                  Open{' '}
-                  <strong className="break-all text-[var(--accent)]">
-                    http://{resolvedHostname}
-                  </strong>{' '}
-                  in your browser
+                <li className="pl-1">
+                  Open this address in your browser:{' '}
+                  <span className="mt-2 block text-center">
+                    <a
+                      href={`http://${resolvedHostname}/`}
+                      className="inline-block max-w-full rounded-lg px-2 py-1 font-mono text-base font-medium text-[var(--accent)] underline decoration-2 underline-offset-2 [overflow-wrap:anywhere] [word-break:normal]"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      http://{resolvedHostname}/
+                    </a>
+                  </span>
                 </li>
               </ol>
             </div>

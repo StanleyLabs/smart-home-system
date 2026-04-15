@@ -7,7 +7,7 @@ import { getDb } from "../../db/database.js";
 import type { Engine } from "../../core/engine.js";
 import type { SystemSettings } from "../../types.js";
 import { applyHostname } from "../../core/hostname.js";
-import { connectToWifi } from "../../core/wifi-manager.js";
+import { connectToWifi, ensureGlobalPort80Redirect } from "../../core/wifi-manager.js";
 import {
   hashPassword,
   hashPin,
@@ -144,6 +144,7 @@ export function setupRoutes(engine: Engine, settings: SystemSettings) {
         }
         console.log(`[setup] Applying hostname "${resolvedHostname}.local"...`);
         await applyHostname(`${resolvedHostname}.local`);
+        await ensureGlobalPort80Redirect();
         console.log("[setup] Network handoff complete — waiting for Phase 2 setup");
       } catch (err: any) {
         console.error("[setup] Network handoff failed:", err.message);
