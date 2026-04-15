@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useId } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
@@ -40,6 +40,267 @@ function defaultTimeZone(): string {
   } catch {
     return '';
   }
+}
+
+/** Shown as chips; filtered to zones supported by the runtime. */
+const TIMEZONE_QUICK_PICKS = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Phoenix',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Sao_Paulo',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Madrid',
+  'Asia/Dubai',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Asia/Kolkata',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+] as const;
+
+const REGION_SORT: readonly string[] = [
+  'America',
+  'Europe',
+  'Asia',
+  'Australia',
+  'Pacific',
+  'Africa',
+  'Atlantic',
+  'Indian',
+  'Antarctica',
+  'Arctic',
+  'Etc',
+  'UTC',
+];
+
+function filterTimezones(zones: readonly string[], query: string): string[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 1) return [];
+  const qUnderscore = q.replace(/\s+/g, '_');
+  const out: string[] = [];
+  for (const z of zones) {
+    const low = z.toLowerCase();
+    const spaced = low.replace(/_/g, ' ');
+    if (
+      low.includes(qUnderscore)
+      || spaced.includes(q)
+      || low.includes(q)
+    ) {
+      out.push(z);
+    }
+    if (out.length >= 250) break;
+  }
+  return out.sort((a, b) => a.localeCompare(b, 'en'));
+}
+
+function groupTimezonesByRegion(zones: readonly string[]): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const z of zones) {
+    const slash = z.indexOf('/');
+    const region = slash === -1 ? (z === 'UTC' ? 'UTC' : 'Other') : z.slice(0, slash);
+    if (!m.has(region)) m.set(region, []);
+    m.get(region)!.push(z);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => a.localeCompare(b, 'en'));
+  }
+  return m;
+}
+
+function sortRegionKeys(keys: string[]): string[] {
+  return [...keys].sort((a, b) => {
+    if (a === 'Other') return 1;
+    if (b === 'Other') return -1;
+    const ia = REGION_SORT.indexOf(a);
+    const ib = REGION_SORT.indexOf(b);
+    const ra = ia === -1 ? 999 : ia;
+    const rb = ib === -1 ? 999 : ib;
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b, 'en');
+  });
+}
+
+function timezoneShortLabel(z: string): string {
+  const tail = z.includes('/') ? z.slice(z.lastIndexOf('/') + 1) : z;
+  return tail.replace(/_/g, ' ');
+}
+
+type TimeZonePickerProps = {
+  id: string;
+  value: string;
+  onChange: (tz: string) => void;
+  options: string[];
+};
+
+function TimeZonePicker({ id, value, onChange, options }: TimeZonePickerProps) {
+  const listboxId = useId();
+  const [query, setQuery] = useState('');
+  const deviceTz = useMemo(() => defaultTimeZone(), []);
+  const optionSet = useMemo(() => new Set(options), [options]);
+
+  const quickPicks = useMemo(
+    () => TIMEZONE_QUICK_PICKS.filter((z) => optionSet.has(z)),
+    [optionSet],
+  );
+
+  const grouped = useMemo(() => groupTimezonesByRegion(options), [options]);
+  const regionKeys = useMemo(
+    () => sortRegionKeys([...grouped.keys()]),
+    [grouped],
+  );
+
+  const filtered = useMemo(
+    () => filterTimezones(options, query),
+    [options, query],
+  );
+
+  const showSearchResults = query.trim().length >= 1;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-left text-sm font-mono text-[var(--text-primary)]"
+        aria-live="polite"
+      >
+        {value ? value : <span className="text-[var(--text-muted)]">None selected</span>}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-[var(--text-muted)]" htmlFor={id}>
+          Search or browse
+        </label>
+        <input
+          id={id}
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Type a city or region (e.g. Tokyo, Paris)"
+          className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+        />
+      </div>
+
+      {showSearchResults && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-[var(--text-muted)]">
+            {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+            {filtered.length >= 250 ? ' (showing first 250)' : ''}
+          </p>
+          <ul
+            id={listboxId}
+            role="listbox"
+            aria-label="Timezone search results"
+            className="max-h-52 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-input)] py-1"
+          >
+            {filtered.length === 0 ? (
+              <li className="px-3 py-4 text-center text-sm text-[var(--text-muted)]">No matches. Try another spelling.</li>
+            ) : (
+              filtered.map((z) => (
+                <li key={z} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={value === z}
+                    onClick={() => {
+                      onChange(z);
+                      setQuery('');
+                    }}
+                    className={`flex w-full px-3 py-2.5 text-left text-sm font-mono transition-colors hover:bg-[var(--bg-card-active)] ${
+                      value === z ? 'bg-[var(--accent)]/12 text-[var(--accent)]' : 'text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {z}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+
+      {!showSearchResults && (
+        <>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-[var(--text-muted)]">Quick picks</p>
+            <div className="flex flex-wrap gap-2">
+              {deviceTz && optionSet.has(deviceTz) && (
+                <button
+                  type="button"
+                  onClick={() => onChange(deviceTz)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    value === deviceTz
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                      : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
+                  }`}
+                >
+                  This device ({timezoneShortLabel(deviceTz)})
+                </button>
+              )}
+              {quickPicks.map((z) => (
+                <button
+                  key={z}
+                  type="button"
+                  onClick={() => onChange(z)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    value === z
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                      : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
+                  }`}
+                >
+                  {timezoneShortLabel(z)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-[var(--text-muted)]">Browse by region</p>
+            <div className="flex max-h-64 flex-col gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-input)] p-1">
+              {regionKeys.map((region) => {
+                const list = grouped.get(region);
+                if (!list?.length) return null;
+                return (
+                  <details key={region} className="group rounded-lg">
+                    <summary className="cursor-pointer list-none px-2 py-2 text-sm font-medium text-[var(--text-primary)] marker:hidden [&::-webkit-details-marker]:hidden">
+                      <span className="mr-1 text-[var(--text-muted)] group-open:rotate-90">▸</span>
+                      {region}
+                      <span className="ml-1 text-xs font-normal text-[var(--text-muted)]">({list.length})</span>
+                    </summary>
+                    <ul className="max-h-40 overflow-y-auto border-t border-[var(--border)]/80 py-1 pl-2">
+                      {list.map((z) => (
+                        <li key={z}>
+                          <button
+                            type="button"
+                            onClick={() => onChange(z)}
+                            className={`w-full rounded-md px-2 py-1.5 text-left text-xs font-mono hover:bg-[var(--bg-card-active)] ${
+                              value === z ? 'bg-[var(--accent)]/12 text-[var(--accent)]' : 'text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            {z}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+
+        </>
+      )}
+    </div>
+  );
 }
 
 const SUGGESTED_ROOMS = [
@@ -690,22 +951,15 @@ export default function Setup() {
               {fieldErrors.hubName && <p className="text-sm text-[var(--danger)]">{fieldErrors.hubName}</p>}
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="setup-timezone">
+              <label className="text-sm font-medium text-[var(--text-secondary)]" htmlFor="setup-timezone-search">
                 Timezone
               </label>
-              <select
-                id="setup-timezone"
+              <TimeZonePicker
+                id="setup-timezone-search"
                 value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-              >
-                <option value="">Select timezone&hellip;</option>
-                {timezoneOptions.map((z) => (
-                  <option key={z} value={z}>
-                    {z}
-                  </option>
-                ))}
-              </select>
+                onChange={setTimezone}
+                options={timezoneOptions}
+              />
               {fieldErrors.timezone && <p className="text-sm text-[var(--danger)]">{fieldErrors.timezone}</p>}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
