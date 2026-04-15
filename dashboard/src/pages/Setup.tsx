@@ -69,21 +69,6 @@ const TIMEZONE_QUICK_PICKS = [
   'Pacific/Auckland',
 ] as const;
 
-const REGION_SORT: readonly string[] = [
-  'America',
-  'Europe',
-  'Asia',
-  'Australia',
-  'Pacific',
-  'Africa',
-  'Atlantic',
-  'Indian',
-  'Antarctica',
-  'Arctic',
-  'Etc',
-  'UTC',
-];
-
 function filterTimezones(zones: readonly string[], query: string): string[] {
   const q = query.trim().toLowerCase();
   if (q.length < 1) return [];
@@ -104,33 +89,6 @@ function filterTimezones(zones: readonly string[], query: string): string[] {
   return out.sort((a, b) => a.localeCompare(b, 'en'));
 }
 
-function groupTimezonesByRegion(zones: readonly string[]): Map<string, string[]> {
-  const m = new Map<string, string[]>();
-  for (const z of zones) {
-    const slash = z.indexOf('/');
-    const region = slash === -1 ? (z === 'UTC' ? 'UTC' : 'Other') : z.slice(0, slash);
-    if (!m.has(region)) m.set(region, []);
-    m.get(region)!.push(z);
-  }
-  for (const arr of m.values()) {
-    arr.sort((a, b) => a.localeCompare(b, 'en'));
-  }
-  return m;
-}
-
-function sortRegionKeys(keys: string[]): string[] {
-  return [...keys].sort((a, b) => {
-    if (a === 'Other') return 1;
-    if (b === 'Other') return -1;
-    const ia = REGION_SORT.indexOf(a);
-    const ib = REGION_SORT.indexOf(b);
-    const ra = ia === -1 ? 999 : ia;
-    const rb = ib === -1 ? 999 : ib;
-    if (ra !== rb) return ra - rb;
-    return a.localeCompare(b, 'en');
-  });
-}
-
 function timezoneShortLabel(z: string): string {
   const tail = z.includes('/') ? z.slice(z.lastIndexOf('/') + 1) : z;
   return tail.replace(/_/g, ' ');
@@ -146,6 +104,7 @@ type TimeZonePickerProps = {
 function TimeZonePicker({ id, value, onChange, options }: TimeZonePickerProps) {
   const listboxId = useId();
   const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
   const deviceTz = useMemo(() => defaultTimeZone(), []);
   const optionSet = useMemo(() => new Set(options), [options]);
 
@@ -154,45 +113,45 @@ function TimeZonePicker({ id, value, onChange, options }: TimeZonePickerProps) {
     [optionSet],
   );
 
-  const grouped = useMemo(() => groupTimezonesByRegion(options), [options]);
-  const regionKeys = useMemo(
-    () => sortRegionKeys([...grouped.keys()]),
-    [grouped],
-  );
-
   const filtered = useMemo(
     () => filterTimezones(options, query),
     [options, query],
   );
 
   const showSearchResults = query.trim().length >= 1;
+  const inputDisplay = focused ? query : (query || value);
+
+  function pickZone(z: string) {
+    onChange(z);
+    setQuery('');
+    setFocused(false);
+  }
 
   return (
     <div className="flex flex-col gap-3">
-      <div
-        className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-left text-sm font-mono text-[var(--text-primary)]"
-        aria-live="polite"
-      >
-        {value ? value : <span className="text-[var(--text-muted)]">None selected</span>}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-[var(--text-muted)]" htmlFor={id}>
-          Search or browse
-        </label>
-        <input
-          id={id}
-          type="search"
-          enterKeyHint="search"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Type a city or region (e.g. Tokyo, Paris)"
-          className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
-        />
-      </div>
+      <input
+        id={id}
+        type="search"
+        enterKeyHint="search"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        value={inputDisplay}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => {
+          setFocused(true);
+          setQuery('');
+        }}
+        onBlur={() => {
+          setFocused(false);
+          setQuery('');
+        }}
+        placeholder="Search by city or region (e.g. New York)"
+        aria-autocomplete="list"
+        aria-controls={showSearchResults ? listboxId : undefined}
+        aria-expanded={showSearchResults}
+        className="w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-4 py-3 font-mono text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+      />
 
       {showSearchResults && (
         <div className="flex flex-col gap-1">
@@ -215,10 +174,8 @@ function TimeZonePicker({ id, value, onChange, options }: TimeZonePickerProps) {
                     type="button"
                     role="option"
                     aria-selected={value === z}
-                    onClick={() => {
-                      onChange(z);
-                      setQuery('');
-                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickZone(z)}
                     className={`flex w-full px-3 py-2.5 text-left text-sm font-mono transition-colors hover:bg-[var(--bg-card-active)] ${
                       value === z ? 'bg-[var(--accent)]/12 text-[var(--accent)]' : 'text-[var(--text-primary)]'
                     }`}
@@ -233,75 +190,40 @@ function TimeZonePicker({ id, value, onChange, options }: TimeZonePickerProps) {
       )}
 
       {!showSearchResults && (
-        <>
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-[var(--text-muted)]">Quick picks</p>
-            <div className="flex flex-wrap gap-2">
-              {deviceTz && optionSet.has(deviceTz) && (
-                <button
-                  type="button"
-                  onClick={() => onChange(deviceTz)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    value === deviceTz
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
-                      : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
-                  }`}
-                >
-                  This device ({timezoneShortLabel(deviceTz)})
-                </button>
-              )}
-              {quickPicks.map((z) => (
-                <button
-                  key={z}
-                  type="button"
-                  onClick={() => onChange(z)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    value === z
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
-                      : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
-                  }`}
-                >
-                  {timezoneShortLabel(z)}
-                </button>
-              ))}
-            </div>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-[var(--text-muted)]">Quick picks</p>
+          <div className="flex flex-wrap gap-2">
+            {deviceTz && optionSet.has(deviceTz) && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickZone(deviceTz)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  value === deviceTz
+                    ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                    : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
+                }`}
+              >
+                This device ({timezoneShortLabel(deviceTz)})
+              </button>
+            )}
+            {quickPicks.map((z) => (
+              <button
+                key={z}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickZone(z)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  value === z
+                    ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
+                    : 'border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-primary)] hover:border-[var(--accent)]/50'
+                }`}
+              >
+                {timezoneShortLabel(z)}
+              </button>
+            ))}
           </div>
-
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-[var(--text-muted)]">Browse by region</p>
-            <div className="flex max-h-64 flex-col gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-input)] p-1">
-              {regionKeys.map((region) => {
-                const list = grouped.get(region);
-                if (!list?.length) return null;
-                return (
-                  <details key={region} className="group rounded-lg">
-                    <summary className="cursor-pointer list-none px-2 py-2 text-sm font-medium text-[var(--text-primary)] marker:hidden [&::-webkit-details-marker]:hidden">
-                      <span className="mr-1 text-[var(--text-muted)] group-open:rotate-90">▸</span>
-                      {region}
-                      <span className="ml-1 text-xs font-normal text-[var(--text-muted)]">({list.length})</span>
-                    </summary>
-                    <ul className="max-h-40 overflow-y-auto border-t border-[var(--border)]/80 py-1 pl-2">
-                      {list.map((z) => (
-                        <li key={z}>
-                          <button
-                            type="button"
-                            onClick={() => onChange(z)}
-                            className={`w-full rounded-md px-2 py-1.5 text-left text-xs font-mono hover:bg-[var(--bg-card-active)] ${
-                              value === z ? 'bg-[var(--accent)]/12 text-[var(--accent)]' : 'text-[var(--text-secondary)]'
-                            }`}
-                          >
-                            {z}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                );
-              })}
-            </div>
-          </div>
-
-        </>
+        </div>
       )}
     </div>
   );
@@ -860,17 +782,19 @@ export default function Setup() {
 
   return (
     <Shell>
-      <div className="mb-10 text-center sm:mb-14">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-          Welcome
-        </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-5xl">
-          Let&apos;s set up your hub
-        </h1>
-        <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-[var(--text-secondary)]">
-          A few quick steps and you&apos;ll be ready to connect devices and build automations.
-        </p>
-      </div>
+      {step === 1 && (
+        <div className="mb-10 text-center sm:mb-14">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
+            Welcome
+          </p>
+          <h1 className="text-4xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-5xl">
+            Let&apos;s set up your hub
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-[var(--text-secondary)]">
+            A few quick steps and you&apos;ll be ready to connect devices and build automations.
+          </p>
+        </div>
+      )}
 
       <div className="mb-10">
         <p className="mb-3 text-center text-sm text-[var(--text-muted)]">
@@ -974,8 +898,8 @@ export default function Setup() {
               />
               {fieldErrors.timezone && <p className="text-sm text-[var(--danger)]">{fieldErrors.timezone}</p>}
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-[var(--text-secondary)]">Temperature unit</p>
                 <p className="text-sm text-[var(--text-muted)]">Fahrenheit or Celsius</p>
               </div>
@@ -987,7 +911,7 @@ export default function Setup() {
                 <button
                   type="button"
                   onClick={() => setTempUnit('F')}
-                  className={`min-w-[4.5rem] rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex h-9 w-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors ${
                     tempUnit === 'F'
                       ? 'bg-[var(--accent)] text-white shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -998,7 +922,7 @@ export default function Setup() {
                 <button
                   type="button"
                   onClick={() => setTempUnit('C')}
-                  className={`min-w-[4.5rem] rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex h-9 w-11 items-center justify-center rounded-lg text-sm font-semibold transition-colors ${
                     tempUnit === 'C'
                       ? 'bg-[var(--accent)] text-white shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
