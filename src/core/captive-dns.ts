@@ -5,6 +5,7 @@ const QTYPE_A = 1;
 const QTYPE_AAAA = 28;
 
 let server: dgram.Socket | null = null;
+let queryCount = 0;
 
 /**
  * Minimal DNS responder for captive portal detection.
@@ -39,6 +40,20 @@ export function startCaptiveDns(ip: string): void {
     if (offset + 4 > msg.length) return;
     const qtype = (msg[offset] << 8) | msg[offset + 1];
     offset += 4; // QTYPE (2) + QCLASS (2)
+
+    // Log first 20 queries + every 100th after that for diagnostics
+    queryCount++;
+    if (queryCount <= 20 || queryCount % 100 === 0) {
+      const nameParts: string[] = [];
+      let i = 12;
+      while (i < msg.length && msg[i] !== 0) {
+        const len = msg[i++];
+        nameParts.push(msg.subarray(i, i + len).toString());
+        i += len;
+      }
+      const typeName = qtype === QTYPE_A ? "A" : qtype === QTYPE_AAAA ? "AAAA" : `TYPE${qtype}`;
+      console.log(`[captive-dns] #${queryCount} ${typeName} ${nameParts.join(".")} from ${rinfo.address}`);
+    }
 
     // Build response header (copy query ID + preserve RD flag)
     const header = Buffer.from(msg.subarray(0, 12));
